@@ -10,15 +10,21 @@ const ARMS = [
 ];
 
 const POSE = {
-  carry_pistol: [[0.08, -0.96, 0.16], [0.44, -0.88, 0.03], null, null],
-  carry_long:   [[0.16, -0.88, 0.22], [0.78, -0.32, -0.28], [0.48, -0.80, 0.16], [0.80, -0.22, 0.44]],
-  hip_pistol:   [[0.70, -0.48, 0.15], [0.96, 0.09, -0.12], [0.54, -0.66, 0.22], [0.74, 0.12, 0.48]],
-  pistol:       [[0.85, -0.3, 0.12], [0.97, 0.12, -0.14], [0.72, -0.45, 0.3], [0.8, 0.24, 0.52]],
-  long:         [[0.22, -0.9, 0.25], [0.92, 0.2, -0.3], [0.74, -0.5, 0.22], [0.78, 0.12, 0.6]],
-  strike:       [[0.8, 0.35, 0.1], [0.9, 0.05, -0.25], null, null]
+  carry_pistol:     [[0.08, -0.96, 0.16], [0.44, -0.88, 0.03], null, null],
+  carry_long:       [[0.16, -0.88, 0.22], [0.78, -0.32, -0.28], [0.48, -0.80, 0.16], [0.80, -0.22, 0.44]],
+  hip_pistol:       [[0.70, -0.48, 0.15], [0.96, 0.09, -0.12], [0.54, -0.66, 0.22], [0.74, 0.12, 0.48]],
+  pistol:           [[0.85, -0.3, 0.12], [0.97, 0.12, -0.14], [0.72, -0.45, 0.3], [0.8, 0.24, 0.52]],
+  long:             [[0.22, -0.9, 0.25], [0.92, 0.2, -0.3], [0.74, -0.5, 0.22], [0.78, 0.12, 0.6]],
+  strike:           [[0.8, 0.35, 0.1], [0.9, 0.05, -0.25], null, null],
+  exec_windup:      [[-0.25, 0.30, 0.65], [0.48, 0.52, -0.45], [0.88, 0.08, 0.16], [0.96, 0.16, 0.22]],
+  exec_smash:       [[0.86, 0.12, -0.36], [0.72, 0.06, -0.66], [0.56, -0.32, 0.28], [0.72, 0.18, 0.48]],
+  exec_aim_hi:      [[0.96, 0.18, 0.04], [0.99, 0.14, -0.02], [-0.22, -0.68, -0.42], [0.18, -0.76, -0.14]],
+  exec_aim_lo:      [[0.92, -0.32, 0.06], [0.96, -0.26, -0.03], [-0.18, -0.72, -0.38], [0.20, -0.78, -0.12]],
+  exec_victim_reel: [[-0.32, 0.18, 0.78], [0.18, 0.62, 0.45], [-0.28, 0.22, -0.76], [0.16, 0.58, -0.44]]
 };
 
 const _q2 = new THREE.Quaternion();
+const _yUp = new THREE.Vector3(0, 1, 0);
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const _q = new THREE.Quaternion();
@@ -1116,7 +1122,10 @@ export class CharacterFactory {
     const xf = {};
     const tmp = new THREE.Object3D();
 
-    for (const cls of ['knife', 'carry_pistol', 'carry_long', 'hip_pistol', 'pistol', 'long', 'strike']) {
+    for (const cls of [
+      'knife', 'carry_pistol', 'carry_long', 'hip_pistol', 'pistol', 'long', 'strike',
+      'exec_windup', 'exec_smash', 'exec_aim_hi', 'exec_aim_lo', 'exec_victim_reel'
+    ]) {
       ARMS.forEach(n => { if (bones[n]) bones[n].quaternion.copy(rest[n]); });
       const P4 = POSE[cls];
       if (P4) {
@@ -1258,7 +1267,21 @@ export class CharacterFactory {
     }
     u.mixer.update(dt * u.rate);
 
-    if (!u.dead && !u.melee && u.aimPose) {
+    if (!u.dead && u.execPose) {
+      const pa = u.poses[u.execPose.a];
+      const pb = u.poses[u.execPose.b || u.execPose.a];
+      const pt = clamp(u.execPose.t ?? 0, 0, 1);
+      const pw = clamp(u.execPose.w ?? 1, 0, 1);
+      if (pa && pb) {
+        for (const n of ARMS) {
+          const b = u.bones[n];
+          if (b && pa[n] && pb[n]) {
+            _q2.copy(pa[n]).slerp(pb[n], pt);
+            b.quaternion.slerp(_q2, pw);
+          }
+        }
+      }
+    } else if (!u.dead && !u.melee && u.aimPose) {
       const locoBlend = mode === 'Walk' ? 0.74 : mode === 'Run' ? 0.62 : 0.90;
       const adsK = clamp(ads, 0, 1);
       for (const n of ARMS) {
@@ -1282,12 +1305,19 @@ export class CharacterFactory {
 
     const pitchScale = 0.18 + 0.82 * rK;
     const pitchTilt = aimPitch * pitchScale + flinch * 0.35;
-    if (Math.abs(pitchTilt) > 0.005 && u.bones.Spine2) {
+    const yawTwist = u.execTwist || 0;
+    if ((Math.abs(pitchTilt) > 0.005 || Math.abs(yawTwist) > 0.005) && u.bones.Spine2) {
       m.updateMatrixWorld(true);
-      const localPitchAxis = _v1.set(0, 0, 1).applyQuaternion(m.quaternion);
-      this._rotateBoneWorldAxis(u.bones.Spine2, localPitchAxis, pitchTilt * 0.65);
-      if (u.bones.Head) {
-        this._rotateBoneWorldAxis(u.bones.Head, localPitchAxis, pitchTilt * 0.3);
+      if (Math.abs(yawTwist) > 0.005) {
+        this._rotateBoneWorldAxis(u.bones.Spine2, _yUp, yawTwist * 0.6);
+        if (u.bones.Head) this._rotateBoneWorldAxis(u.bones.Head, _yUp, yawTwist * 0.45);
+      }
+      if (Math.abs(pitchTilt) > 0.005) {
+        const localPitchAxis = _v1.set(0, 0, 1).applyQuaternion(m.quaternion);
+        this._rotateBoneWorldAxis(u.bones.Spine2, localPitchAxis, pitchTilt * 0.65);
+        if (u.bones.Head) {
+          this._rotateBoneWorldAxis(u.bones.Head, localPitchAxis, pitchTilt * 0.35);
+        }
       }
     }
   }
@@ -1299,6 +1329,8 @@ export class CharacterFactory {
     u.pose = null;
     u.aimPose = null;
     u.carryPose = null;
+    u.execPose = null;
+    u.execTwist = 0;
     u.strike = 0;
     u.glint.visible = false;
     u.gun.visible = false;

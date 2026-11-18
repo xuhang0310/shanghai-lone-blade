@@ -85,6 +85,10 @@ let shiftDownAt = 0;
 let bossConfronted = false;
 let reloadSpeakCd = 0;
 let execTarget = null;
+let execKind = 'exec';
+let execSession = null;
+let hitstopT = 0;
+const execFX = { k: 0, flash: 0, dash: 0 };
 let shake = 0;
 let hurtFlash = 0;
 let hurtAng = null;
@@ -621,6 +625,9 @@ function buildLevelWorld(lvlIndex) {
   dialogueQueue = [];
   bossConfronted = false;
   execTarget = null;
+  execSession = null;
+  hitstopT = 0;
+  execFX.k = execFX.flash = execFX.dash = 0;
 
   physics.reset();
   physics.onProjectileContact = (entry, other) => {
@@ -765,75 +772,305 @@ function newGame() {
   startLevel(0);
 }
 
+function spawnExecShockRing(x, y, z, colHex = 0xffd280, maxScale = 3.6) {
+  const swm = new THREE.MeshBasicMaterial({
+    color: colHex,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const sw = new THREE.Mesh(gr.G.shockRing, swm);
+  sw.position.set(x, y, z);
+  gr.scene.add(sw);
+  shockwaves.push({ t: 0, dur: 0.26, max: maxScale, mesh: sw, dead: false });
+}
+
 function findExecTarget() {
   let best = null;
-  let bd = 2.75;
+  let bestKind = 'exec';
+  let bestScore = 1e9;
+  const lookX = Math.cos(P.ang);
+  const lookZ = Math.sin(P.ang);
+
   for (const e of level.enemies) {
-    if (e.hp <= 0) continue;
-    const d = Math.hypot(e.x - P.x, e.z - P.z);
-    if (d > bd) continue;
+    if (e.hp <= 0 || e.executing) continue;
+    const dx = e.x - P.x;
+    const dz = e.z - P.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 6.0) continue;
+    const fwdDot = (dx * lookX + dz * lookZ) / (d || 1);
+    if (d > 2.2 && fwdDot < -0.15) continue;
     if (!level.los(P.x, P.z, e.x, e.z)) continue;
-    const dirDot = ((P.x - e.x) * Math.cos(e.ang) + (P.z - e.z) * Math.sin(e.ang)) / (d || 1);
-    const behind = dirDot < -0.15;
+
+    const foeDot = ((P.x - e.x) * Math.cos(e.ang) + (P.z - e.z) * Math.sin(e.ang)) / (d || 1);
+    const behind = foeDot < -0.12;
     const vulnerable =
       !e.awake ||
       behind ||
+      (e.staggerT || 0) > 0 ||
       e.stun > 0 ||
       e.type === 'thug' ||
-      (e.type === 'boss' ? e.hp <= e.max * 0.18 : e.hp <= e.max * 0.65);
-    if (vulnerable) {
-      bd = d;
+      (e.type === 'boss' ? e.hp <= e.max * 0.22 : e.hp <= e.max * 0.80);
+
+    if (!vulnerable && d > 3.8) continue;
+    const candKind = vulnerable ? 'exec' : 'smash';
+    const sc = d - fwdDot * 1.5 - (vulnerable ? 4.0 : 0);
+    if (sc < bestScore) {
+      bestScore = sc;
       best = e;
+      bestKind = candKind;
     }
   }
+  execKind = bestKind;
   return best;
 }
 
 function tryExecute() {
-  if (state !== 'play' || P.execT > 0 || P.rollT > 0) return;
+  if (state !== 'play' || P.execT > 0 || P.rollT > 0 || execSession) return;
   const e = findExecTarget();
   if (!e) {
-    say('靠近背后、虚弱或硬直中的敌人按 [E] 处决');
+    say('贴近敌寇（6米内）按 [E] 猛袭处决 / 重托破防');
     return;
   }
+
   const dx = e.x - P.x;
   const dz = e.z - P.z;
   const d = Math.hypot(dx, dz) || 1;
   const ndx = dx / d;
   const ndz = dz / d;
-  const stealth = !e.awake;
 
-  // Collision-safe lunge close to target
-  if (d > 1.05) {
-    const moveDist = Math.min(d - 0.95, 1.4);
-    physics.movePlayer(ndx * moveDist, 0, ndz * moveDist);
-    const pos = physics.playerBody?.translation();
-    if (pos) {
-      P.x = pos.x;
-      P.z = pos.z;
+  // Heavy Guard-Break Smash against un-staggered full-HP elite enemies -> immediately opens them up for [E] Finisher!
+  if (execKind === 'smash') {
+    if (d > 1.05) {
+      const stepD = Math.min(d - 0.95, 2.2);
+      const mv = physics.movePlayer(ndx * stepD, 0, ndz * stepD);
+      P.x = mv.x;
+      P.z = mv.z;
+    }
+    P.ang = Math.atan2(ndz, ndx);
+    P.execT = 0.34;
+    P.inv = 0.58;
+    hitstopT = 0.046;
+    execFX.flash = 0.48;
+    execFX.dash = 0.65;
+    shake = Math.max(shake, 0.44);
+    audio.sfx('execCrunch');
+    audio.playVoiceShout('exec', 0.6);
+    level.moveEnt(e, ndx * 0.95, ndz * 0.95);
+    enemyMgr.hitEnemy(e, 26, ndx, ndz, e.ht * 0.78, makeLogicCtx(), false, 0);
+    if (e.hp > 0) {
+      e.staggerT = 5.8;
+      e.stun = 1.6;
+      e.flinch = 2.0;
+    }
+    puff(e.x, e.ht * 0.82, e.z, 10, '#ffd88a', 6.5, 0.25);
+    say('重托破防硬直！再按 [E] 贴脸残暴终结！');
+    return;
+  }
+
+  // Full 3-Act God-of-War Choreographed Finisher!
+  const stealth = !e.awake;
+  const dur = stealth ? 0.66 : 0.86;
+  const yaw = Math.atan2(ndz, ndx);
+
+  // Choose wall-free side (+1 or -1) for the orbiting heroic 3/4 execution camera
+  const mx0 = (P.x + e.x) * 0.5;
+  const mz0 = (P.z + e.z) * 0.5;
+  const rPlus = physics.castRay(mx0, P.y + 1.25, mz0, Math.cos(yaw + Math.PI + 0.88), 0, Math.sin(yaw + Math.PI + 0.88), 2.1, GROUP_WORLD, physics.playerCollider);
+  const rMinus = physics.castRay(mx0, P.y + 1.25, mz0, Math.cos(yaw + Math.PI - 0.88), 0, Math.sin(yaw + Math.PI - 0.88), 2.1, GROUP_WORLD, physics.playerCollider);
+  const side = !rPlus ? 1 : !rMinus ? -1 : rPlus.dist >= rMinus.dist ? 1 : -1;
+
+  e.executing = true;
+  P.crouch = false;
+  P.ang = yaw;
+  P.execT = dur;
+  P.inv = dur + 0.48;
+  execFX.dash = 0.95;
+  audio.sfx('execDash');
+
+  execSession = {
+    e,
+    stealth,
+    style: stealth ? -1 : (Math.random() * 3) | 0,
+    t: 0,
+    dur,
+    standoff: stealth ? 0.78 : 0.88,
+    ndx,
+    ndz,
+    yaw,
+    side,
+    didSmash: false,
+    didKill: false
+  };
+}
+
+function updateExecution(dt) {
+  if (execFX.flash > 0) execFX.flash = Math.max(0, execFX.flash - dt * 3.6);
+  if (execFX.dash > 0) execFX.dash = Math.max(0, execFX.dash - dt * 4.2);
+
+  if (!execSession) {
+    execFX.k = Math.max(0, execFX.k - dt * 6);
+    if (execFX.k <= 0.005) P.execCam = null;
+    return;
+  }
+
+  const s = execSession;
+  const e = s.e;
+  s.t += dt;
+  const t = s.t;
+  const smashT = s.stealth ? 0.18 : 0.21;
+  const killT = s.stealth ? 0.44 : 0.52;
+
+  // Act 1: Ferocious 6m Predator Gap-Closing Dash across wet cobblestones
+  if (e && e.hp > 0 && t < smashT) {
+    const goalX = e.x - s.ndx * s.standoff;
+    const goalZ = e.z - s.ndz * s.standoff;
+    const remX = goalX - P.x;
+    const remZ = goalZ - P.z;
+    const remD = Math.hypot(remX, remZ);
+    if (remD > 0.03) {
+      const step = Math.min(remD, (remD / Math.max(0.03, smashT - t + 0.02)) * dt * 1.35);
+      const mv = physics.movePlayer((remX / remD) * step, 0, (remZ / remD) * step);
+      P.x = mv.x;
+      P.z = mv.z;
+      if (Math.random() < 0.55) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 3.4, 0.24);
+    }
+    P.ang = s.yaw;
+  }
+
+  // Act 2: Bone-Crushing Collar-Grab / Jaw-Breaker / Knee-Smash + Hitstop!
+  if (!s.didSmash && t >= smashT) {
+    s.didSmash = true;
+    if (e && e.hp > 0) {
+      if (s.stealth) {
+        audio.sfx('execSlash');
+        hitstopT = 0.042;
+        execFX.flash = 0.42;
+        shake = Math.max(shake, 0.28);
+        e.flinch = 1.6;
+        puff(e.x, e.ht * 0.84, e.z, 12, '#c81e16', 6.2, 0.45);
+      } else {
+        audio.sfx('execCrunch');
+        audio.playVoiceShout('exec', 0.5);
+        audio.playVoiceShout('grunt', 0.7);
+        hitstopT = 0.052;
+        execFX.flash = 0.55;
+        shake = Math.max(shake, 0.46);
+        e.ang = Math.atan2(-s.ndz, -s.ndx);
+        e.flash = 0.12;
+        e.flinch = 2.4;
+        level.moveEnt(e, s.ndx * 0.18, s.ndz * 0.18);
+        puff(e.x, e.ht * (s.style === 1 ? 0.52 : 0.86), e.z, 11, '#c81e16', 7.2, 0.44);
+        puff(e.x, e.ht * 0.88, e.z, 7, '#dcebfa', 5.5, 0.26);
+      }
     }
   }
 
-  P.ang = Math.atan2(ndz, ndx);
-  P.execT = 0.58;
-  P.inv = 0.78;
-  P.focus = Math.min(100, P.focus + 25);
-  P.hp = Math.min(100, P.hp + 12);
-  shake = Math.max(shake, stealth ? 0.14 : 0.34);
+  // Act 3: Point-Blank Coup-de-Grâce Blast / Silent Finisher + Heavy Hitstop & Ragdoll Launch!
+  if (!s.didKill && t >= killT) {
+    s.didKill = true;
+    if (e && e.hp > 0) {
+      const dx = e.x - P.x;
+      const dz = e.z - P.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const ndx = dx / d;
+      const ndz = dz / d;
 
-  audio.playVoiceShout('exec', 1.2);
-  audio.sfx(stealth ? 'stealthExec' : 'combatExec');
+      if (s.stealth) {
+        e.awake = true;
+        enemyMgr.hitEnemy(e, 9999, ndx, ndz, e.ht * 0.86, makeLogicCtx(), true, 4.4);
+        score += 180;
+        killMark = 0.55;
+        say('雨夜无声抹喉！生命+22 · 专注+35');
+        radio('沈孤鸿：「无声放倒……弄堂里没人察觉。」', 2.6);
+      } else {
+        const wGun = WEAPONS[P.gun];
+        audio.sfx(wGun.snd);
+        audio.sfx('execFinisher');
+        hitstopT = 0.072;
+        execFX.flash = 1.0;
+        muzzle = 1.65;
+        shake = Math.max(shake, 0.86);
 
-  if (stealth) e.awake = true; // Mark awake locally so hitEnemy won't alert nearby squadmates
-  const ctx = makeLogicCtx();
-  enemyMgr.hitEnemy(e, 999, ndx, ndz, e.ht * 0.92, ctx, !stealth);
-  score += stealth ? 150 : 120;
-  killMark = 0.45;
-  say(stealth ? '悄声暗杀！专注+25 · 生命+12' : '近身处决！专注+25 · 生命+12');
-  if (stealth) {
-    radio('沈孤鸿：「无声放倒一个……别惊动弄堂里的其他人。」', 2.8);
-  } else if (Math.random() < 0.6) {
-    radio('沈孤鸿：「下辈子记住，别拿枪指着我的头。」', 2.6);
+        const impactX = (P.x + e.x) * 0.5;
+        const impactZ = (P.z + e.z) * 0.5;
+        gr.boomLight.position.set(impactX, P.y + 1.38, impactZ);
+        gr.boomLight.intensity = 62;
+        spawnExecShockRing(e.x, 0.12, e.z, 0xffc870, 3.9);
+        puff(impactX, P.y + 1.36, impactZ, 16, '#ffd88a', 9.5, 0.28);
+        puff(impactX, P.y + 1.38, impactZ, 10, '#d8d4ca', 3.4, 0.65);
+        spawnCasing(P.x, P.y + 1.4, P.z, -ndz * 2.8 + rnd(-0.6, 0.6), ndx * 2.8 + rnd(-0.6, 0.6));
+
+        enemyMgr.hitEnemy(e, 9999, ndx, ndz, e.ht * 0.90, makeLogicCtx(), true, 14.5);
+
+        // God-of-War AoE Intimidation Shockwave: nearby enemies flinch & stagger in terror!
+        for (const o of level.enemies) {
+          if (o.hp > 0 && Math.hypot(o.x - P.x, o.z - P.z) < 8.8) {
+            o.stun = Math.max(o.stun || 0, 1.2);
+            o.flinch = 1.35;
+          }
+        }
+
+        P.mags[P.gun] = Math.min(wGun.mag, P.mags[P.gun] + 2);
+        score += 160;
+        killMark = 0.68;
+        headMark = 0.55;
+        say('残暴贴脸处决！生命+22 · 专注+35 · 弹匣+2');
+        const lines = [
+          '沈孤鸿：「这一枪，替上海滩收你的命！」',
+          '沈孤鸿：「下辈子记住，别拿枪指着我的头。」',
+          '沈孤鸿：「挡我路者——死！」'
+        ];
+        if (Math.random() < 0.75) radio(lines[(Math.random() * lines.length) | 0], 2.6);
+      }
+
+      P.hp = Math.min(100, P.hp + 22);
+      P.focus = Math.min(100, P.focus + 35);
+      P.gunHoldT = 3.0;
+      P.gunReady = 1;
+    }
+  }
+
+  // Smooth One-Shot Execution Camera Envelope
+  const camIn = clamp(t / 0.16, 0, 1);
+  const camOut = clamp((s.dur - t) / 0.22, 0, 1);
+  const camK = Math.min(camIn, camOut);
+  execFX.k = camK;
+
+  const anchorX = e && e.hp > 0 ? (P.x + e.x) * 0.5 : P.x + s.ndx * 0.45;
+  const anchorZ = e && e.hp > 0 ? (P.z + e.z) * 0.5 : P.z + s.ndz * 0.45;
+  const fovKick = s.didKill
+    ? Math.max(0, 1 - (t - killT) / 0.24) * 9.0
+    : s.didSmash
+      ? Math.max(0, 1 - (t - smashT) / 0.14) * 3.8
+      : 0;
+  const roll = s.didKill
+    ? Math.max(0, 1 - (t - killT) / 0.26) * 0.07 * s.side
+    : s.didSmash
+      ? -0.04 * s.side
+      : 0;
+
+  P.execCam = {
+    k: camK,
+    mx: anchorX,
+    mz: anchorZ,
+    yaw: s.yaw,
+    side: s.side,
+    dist: s.stealth ? 1.65 : 1.82,
+    lookY: s.style === 1 && s.didSmash ? 1.12 : 1.32,
+    fovKick,
+    roll
+  };
+
+  if (t >= s.dur) {
+    if (e) e.executing = false;
+    if (playerMesh) {
+      playerMesh.userData.execPose = null;
+      playerMesh.userData.execTwist = 0;
+    }
+    execSession = null;
+    P.execCam = null;
   }
 }
 
@@ -1218,7 +1455,8 @@ function updatePlay(dt) {
   P.updateMovement(playerDt, input, physics, audio, (x, y, z) => {
     puff(x, y + 0.08, z, 8, '#8f8a80', 3.5, 0.4);
   }, level.cfg.style);
-  execTarget = findExecTarget();
+  updateExecution(playerDt);
+  execTarget = execSession ? null : findExecTarget();
 
   if (!bossConfronted && level.boss && level.boss.hp > 0 && level.boss.awake) {
     bossConfronted = true;
@@ -1679,15 +1917,46 @@ function syncScene(dt) {
     const execing = P.execT > 0;
     const walking = P.moving && !P.sprinting && !rolling;
     const pu = playerMesh.userData;
-    pu.rate = rolling ? 1.6 : diving ? 0.45 : execing ? 2.2 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
-    pu.strike = execing ? Math.sin((P.execT / 0.58) * Math.PI) : 0;
+
+    // Choreographed 3-Act God-of-War Execution upper-body & torso torque
+    if (execSession) {
+      const s = execSession;
+      const t = s.t;
+      const smashT = s.stealth ? 0.18 : 0.21;
+      const killT = s.stealth ? 0.44 : 0.52;
+      const aimTarget = s.style === 1 ? 'exec_aim_lo' : 'exec_aim_hi';
+      if (t < smashT) {
+        pu.execPose = { a: 'exec_windup', b: 'exec_windup', t: 0, w: clamp(t / 0.1, 0, 1) };
+        pu.execTwist = 0.42 * Math.sin((t / smashT) * Math.PI * 0.5);
+      } else if (t < killT) {
+        const k2 = clamp((t - smashT) / (killT - smashT), 0, 1);
+        pu.execPose = { a: 'exec_smash', b: aimTarget, t: Math.pow(k2, 1.4), w: 1 };
+        pu.execTwist = -0.46 * (1 - k2);
+      } else {
+        const k3 = clamp((t - killT) / Math.max(0.1, s.dur - killT), 0, 1);
+        pu.execPose = { a: aimTarget, b: aimTarget, t: 1, w: 1 - Math.pow(k3, 2.2) };
+        pu.execTwist = 0.12 * (1 - k3);
+      }
+    } else if (execing) {
+      // Heavy Guard-Break Smash pose
+      const smashK = Math.sin((1 - P.execT / 0.34) * Math.PI);
+      pu.execPose = { a: 'exec_windup', b: 'exec_smash', t: clamp(1 - P.execT / 0.18, 0, 1), w: smashK };
+      pu.execTwist = -0.38 * smashK;
+    } else {
+      pu.execPose = null;
+      pu.execTwist = 0;
+    }
+
+    const dashingExec = !!(execSession && execSession.t < (execSession.stealth ? 0.18 : 0.21));
+    pu.rate = rolling ? 1.6 : diving ? 0.45 : dashingExec ? 1.65 : execing ? 1.15 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
+    pu.strike = 0;
     const mode =
-      state === 'play' && (P.moving || rolling || P.air) && !diving
-        ? rolling || P.sprinting
+      state === 'play' && (P.moving || rolling || P.air || dashingExec) && !diving
+        ? rolling || P.sprinting || dashingExec
           ? 'Run'
           : 'Walk'
         : 'RelaxIdle';
-    const aimElev = state === 'play' && !rolling ? -(P.pitch - P.recoil) * 0.65 : 0;
+    const aimElev = state === 'play' && !rolling && !execSession ? -(P.pitch - P.recoil) * 0.65 : 0;
     const readyW = diving ? 1 : rolling || execing ? 0 : P.gunReady;
 
     cf.poseMesh(playerMesh, P.x, P.z, rolling ? Math.atan2(P.rdz, P.rdx) : P.ang, mode, dt, aimElev, 0, readyW, P.ads);
@@ -1708,9 +1977,9 @@ function syncScene(dt) {
       pu.pivot.position.y = 0.9 + diveEase * 0.34;
       pu.pivot.scale.setScalar(1);
     } else if (execing) {
-      const lungeEase = Math.sin((P.execT / 0.58) * Math.PI);
+      const lungeLean = dashingExec ? 0.22 : execSession?.didKill ? -0.08 : 0.10;
       pu.pivot.rotation.x = 0;
-      pu.pivot.rotation.z = -0.34 * lungeEase;
+      pu.pivot.rotation.z = -lungeLean;
       pu.pivot.position.y = 0.9;
       pu.pivot.scale.setScalar(1);
     } else {
@@ -1720,7 +1989,8 @@ function syncScene(dt) {
       pu.pivot.scale.setScalar(1);
     }
     playerMesh.scale.y = 1 - 0.3 * P.crouchK;
-    playerMesh.visible = state === 'menu' ? false : !(P.inv > 0 && Math.floor(time * 20) % 2);
+    const invBlink = P.inv > 0 && P.execT <= 0 && !execSession && hurtFlash > 0 && Math.floor(time * 20) % 2;
+    playerMesh.visible = state === 'menu' ? false : !invBlink;
   }
 
   if (level.hostage?.mesh) {
@@ -1766,16 +2036,26 @@ function syncScene(dt) {
     m.visible = !far;
     if (far) continue;
     const u = m.userData;
+    if (e.executing && execSession && execSession.e === e) {
+      const st = execSession.t;
+      const smT = execSession.stealth ? 0.18 : 0.21;
+      u.execPose = st >= smT ? { a: 'exec_victim_reel', b: 'exec_victim_reel', t: 1, w: clamp((st - smT) / 0.08, 0, 1) } : null;
+      u.execTwist = st >= smT ? 0.55 * Math.sin(((st - smT) / 0.3) * Math.PI) : 0;
+    } else {
+      u.execPose = null;
+      u.execTwist = 0;
+    }
     u.rate = e.awake ? clamp(e.spd / 5.6, 0.72, 1.25) : 0.95;
     u.strike = u.melee ? clamp((e.cd - 0.45) / 0.3, 0, 1) : 0;
     const eMode = !e.awake ? 'RelaxIdle' : e.moving ? (e.spd < 3.1 ? 'Walk' : 'Run') : 'Idle';
-    const eReady = e.awake ? 1 : 0.06;
+    const eReady = e.executing ? 0 : e.awake && (e.staggerT || 0) <= 0 ? 1 : 0.08;
     const eAds = e.aimT > 0 || e.burst > 0 ? 1 : 0.35;
     cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, e.flinch || 0, eReady, eAds);
     u.mat.emissive.setHex(e.flash > 0 ? 0xaa3020 : 0);
     if (u.coatMat) u.coatMat.emissive.setHex(e.flash > 0 ? 0x551810 : 0);
-    u.glint.visible = e.aimT > 0 || e.burst > 0 || e.callT > 0;
-    u.dk += ((e.duck ? 1 : 0) - u.dk) * Math.min(1, dt * 9);
+    u.glint.visible = !e.executing && (e.aimT > 0 || e.burst > 0 || e.callT > 0);
+    const kneelK = e.executing && execSession?.style === 1 && execSession?.didSmash ? 0.34 : 0;
+    u.dk += ((Math.max(e.duck ? 1 : 0, kneelK)) - u.dk) * Math.min(1, dt * 11);
     m.scale.y = m.scale.x * (1 - 0.4 * u.dk);
   }
 
@@ -1978,13 +2258,20 @@ function frame(ts) {
     fpsFrames = 0;
   }
 
-  if (state === 'play') updatePlay(dt);
+  let effDt = dt;
+  if (hitstopT > 0 && state === 'play') {
+    hitstopT = Math.max(0, hitstopT - dt);
+    effDt = dt * 0.025;
+    shake = Math.max(shake, 0.30);
+  }
+
+  if (state === 'play') updatePlay(effDt);
   else {
     time += dt;
     physics.step(dt, worldGroup);
   }
 
-  const sceneDt = state === 'play' && (P.bulletTime || P.diveT > 0) ? dt * 0.28 : dt;
+  const sceneDt = state === 'play' && (P.bulletTime || P.diveT > 0) ? effDt * 0.28 : effDt;
   syncScene(sceneDt);
   gr.render();
   hud.draw({
@@ -2008,6 +2295,8 @@ function frame(ts) {
     headMark,
     aimHit,
     execTarget,
+    execKind,
+    execFX,
     nades,
     pickups,
     timeLeft,
@@ -2154,6 +2443,7 @@ async function boot() {
     const reqLvl = params.has('level') ? clamp(parseInt(params.get('level'), 10) || 0, 0, LEVELS.length - 1) : 0;
     if (params.get('autostart') === '1') {
       startLevel(reqLvl);
+      if (params.get('stageExec') === '1') window.__game.stageExecTarget();
     } else {
       buildLevelWorld(reqLvl);
       menu();
@@ -2198,6 +2488,22 @@ window.__game = {
     if (state !== 'play') return;
     input.mouse.down = true;
     setTimeout(() => { input.mouse.down = false; }, 120);
+  },
+  stageExecTarget() {
+    const e = level.enemies.find(o => o.hp > 0);
+    if (!e) return null;
+    e.x = P.x + Math.cos(P.ang) * 3.4;
+    e.z = P.z + Math.sin(P.ang) * 3.4;
+    e.ang = P.ang + Math.PI;
+    e.awake = true;
+    e.staggerT = 5.0;
+    physics.updateEnemyCollider(e, e.x, e.z, e.ht);
+    execTarget = findExecTarget();
+    return { type: e.type, execKind };
+  },
+  triggerExec() {
+    tryExecute();
+    return { active: !!execSession, kills };
   }
 };
 

@@ -369,6 +369,29 @@ export class AudioManager {
         this.noise(0.75, 580, 0.55, 0.52, 'lowpass');
         this.tone(260, 75, 0.42, 0.25, 'sine');
         break;
+      case 'execDash':
+        this.noise(0.16, 420, 0.8, 0.32, 'lowpass');
+        this.noise(0.09, 1800, 1.6, 0.18, 'bandpass');
+        this.tone(155, 46, 0.16, 0.34, 'sine');
+        break;
+      case 'execCrunch':
+        this.noise(0.075, 1950, 1.4, 0.44, 'bandpass');
+        this.noise(0.14, 340, 0.7, 0.52, 'lowpass');
+        this.tone(145, 32, 0.18, 0.58, 'triangle');
+        this.tone(920, 210, 0.055, 0.26, 'sawtooth');
+        break;
+      case 'execSlash':
+        this.noise(0.11, 3400, 2.2, 0.34, 'highpass');
+        this.noise(0.14, 720, 1.1, 0.32, 'bandpass');
+        this.tone(2400, 680, 0.09, 0.18, 'triangle');
+        this.tone(118, 34, 0.22, 0.48, 'sine');
+        break;
+      case 'execFinisher':
+        this.noise(0.12, 1600, 0.9, 0.48, 'bandpass');
+        this.noise(0.55, 210, 0.5, 0.76, 'lowpass');
+        this.tone(96, 22, 0.46, 0.72, 'sine');
+        this.tone(210, 42, 0.22, 0.48, 'triangle');
+        break;
       case 'stealthExec':
         this.noise(0.09, 2400, 1.8, 0.22, 'highpass');
         this.tone(140, 48, 0.15, 0.35, 'triangle');

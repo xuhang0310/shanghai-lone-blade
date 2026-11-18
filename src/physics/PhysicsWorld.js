@@ -332,21 +332,23 @@ export class PhysicsWorld {
 
   spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.5) {
     const halfH = 0.72 * scale;
+    const isHeavy = slideImpulse > 9.5;
     _q.setFromAxisAngle(_yAxis, initialYaw);
-    _q2.setFromAxisAngle(_zAxis, dirSign * 0.34);
+    _q2.setFromAxisAngle(_zAxis, dirSign * (isHeavy ? 0.55 : 0.34));
     _q.multiply(_q2);
     const rb = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, 0.82 * scale, z)
+        .setTranslation(x, (isHeavy ? 0.92 : 0.82) * scale, z)
         .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
-        .setLinvel(pushX * slideImpulse, 1.3, pushZ * slideImpulse)
+        .setLinvel(pushX * slideImpulse, isHeavy ? 2.85 : 1.3, pushZ * slideImpulse)
         .setAngvel({
-          x: pushZ * 6.0 + (Math.random() - 0.5) * 1.6,
-          y: (Math.random() - 0.5) * 2.5,
-          z: -pushX * 6.0 + (Math.random() - 0.5) * 1.6
+          x: pushZ * (isHeavy ? 9.5 : 6.0) + (Math.random() - 0.5) * 2.2,
+          y: (Math.random() - 0.5) * (isHeavy ? 4.5 : 2.5),
+          z: -pushX * (isHeavy ? 9.5 : 6.0) + (Math.random() - 0.5) * 2.2
         })
-        .setLinearDamping(1.2)
-        .setAngularDamping(2.2)
+        .setCcdEnabled(true)
+        .setLinearDamping(isHeavy ? 0.95 : 1.2)
+        .setAngularDamping(2.0)
     );
     const col = this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(0.15 * scale, halfH, 0.27 * scale)

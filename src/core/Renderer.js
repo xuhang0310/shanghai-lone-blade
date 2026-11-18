@@ -453,13 +453,34 @@ export class GameRenderer {
     this.rain.frustumCulled = false;
     this.scene.add(this.rain);
 
+    const dropCv = document.createElement('canvas');
+    dropCv.width = 64;
+    dropCv.height = 64;
+    const dCtx = dropCv.getContext('2d');
+    const dGrad = dCtx.createRadialGradient(32, 32, 0, 32, 32, 30);
+    dGrad.addColorStop(0, 'rgba(255,255,255,1)');
+    dGrad.addColorStop(0.48, 'rgba(255,255,255,0.88)');
+    dGrad.addColorStop(0.82, 'rgba(255,255,255,0.28)');
+    dGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    dCtx.fillStyle = dGrad;
+    dCtx.fillRect(0, 0, 64, 64);
+    const dropTex = new THREE.CanvasTexture(dropCv);
+
     const PN = 600;
     this.partGeo = new THREE.BufferGeometry();
     this.partGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PN * 3), 3));
     this.partGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(PN * 3), 3));
     this.partPts = new THREE.Points(
       this.partGeo,
-      new THREE.PointsMaterial({ size: 0.11, vertexColors: true, sizeAttenuation: true })
+      new THREE.PointsMaterial({
+        size: 0.082,
+        map: dropTex,
+        transparent: true,
+        alphaTest: 0.04,
+        depthWrite: false,
+        vertexColors: true,
+        sizeAttenuation: true
+      })
     );
     this.partPts.frustumCulled = false;
     this.scene.add(this.partPts);

@@ -107,7 +107,16 @@ export class EnemyManager {
     if (e.flash > 0) e.flash -= dt;
     if (e.flinch > 0) e.flinch = Math.max(0, e.flinch - dt * 5.5);
     if (e.stun > 0) e.stun -= dt;
+    if (e.staggerT > 0) {
+      e.staggerT = Math.max(0, e.staggerT - dt);
+      e.flinch = Math.max(e.flinch || 0, 0.36);
+    }
     if (e.inv > 0) e.inv -= dt;
+    if (e.executing) {
+      e.moving = false;
+      e.spd = 0;
+      return;
+    }
 
     if (!e.awake) {
       if (d < 27 && (d < 7 || level.los3(e.x, e.ht - 0.2, e.z, P.x, ph, P.z))) {
@@ -232,31 +241,33 @@ export class EnemyManager {
         e.ang = Math.atan2(vz, vx);
       }
 
-      e.cd -= dt;
-      if (e.burst > 0) {
-        e.burstT -= dt;
-        if (e.burstT <= 0) {
-          e.burstT = 0.11;
-          e.burst--;
-          this._fire(e, 0.085, 285, e.type === 'boss' ? 7 : 6, false, ctx);
-        }
-      } else if (e.aimT > 0) {
-        e.aimT -= dt;
-        if (e.aimT <= 0) {
-          if (e.type === 'gunman' || e.type === 'officer') {
-            this._fire(e, 0.06, 300, 9, false, ctx);
-            e.cd = rnd(1.1, 1.7);
-          } else if (e.type === 'soldier') {
-            this._fire(e, 0.032, 680, 15, false, ctx);
-            e.cd = rnd(1.9, 2.5);
-          } else {
-            e.burst = e.type === 'boss' ? 8 : 5;
-            e.burstT = 0;
-            e.cd = rnd(1.6, 2.2);
+      if (P.execT <= 0) {
+        e.cd -= dt;
+        if (e.burst > 0 && e.staggerT <= 0) {
+          e.burstT -= dt;
+          if (e.burstT <= 0) {
+            e.burstT = 0.11;
+            e.burst--;
+            this._fire(e, 0.085, 285, e.type === 'boss' ? 7 : 6, false, ctx);
           }
+        } else if (e.aimT > 0 && e.staggerT <= 0) {
+          e.aimT -= dt;
+          if (e.aimT <= 0) {
+            if (e.type === 'gunman' || e.type === 'officer') {
+              this._fire(e, 0.06, 300, 9, false, ctx);
+              e.cd = rnd(1.1, 1.7);
+            } else if (e.type === 'soldier') {
+              this._fire(e, 0.032, 680, 15, false, ctx);
+              e.cd = rnd(1.9, 2.5);
+            } else {
+              e.burst = e.type === 'boss' ? 8 : 5;
+              e.burstT = 0;
+              e.cd = rnd(1.6, 2.2);
+            }
+          }
+        } else if (e.sees && d < 34 && e.cd <= 0 && (e.staggerT || 0) <= 0 && !(e.way && e.way.length)) {
+          e.aimT = e.type === 'soldier' ? 0.6 : 0.38;
         }
-      } else if (e.sees && d < 34 && e.cd <= 0 && !(e.way && e.way.length)) {
-        e.aimT = e.type === 'soldier' ? 0.6 : 0.38;
       }
 
       if (e.type === 'gunner' || e.type === 'boss') {
@@ -328,7 +339,7 @@ export class EnemyManager {
       }
     }
 
-    if (e.stun > 0) sp *= 0.3;
+    if (e.stun > 0 || e.staggerT > 0) sp *= 0.25;
     e.moving = !!(vx || vz);
     e.spd = sp;
     if (e.moving) {
@@ -369,26 +380,40 @@ export class EnemyManager {
     }
   }
 
-  hitEnemy(e, dmg, dx, dz, hitY, ctx, head = false) {
-    if (e.hp <= 0 || e.inv > 0) return;
+  hitEnemy(e, dmg, dx, dz, hitY, ctx, head = false, execBoost = 0) {
+    if (e.hp <= 0 || (e.inv > 0 && !execBoost)) return;
     const { level, player: P, physics, audio, callbacks } = ctx;
     e.duck = false;
     e.hp -= dmg;
     e.flash = 0.08;
-    e.flinch = 1.0;
-    e.stun = Math.max(e.stun, dmg >= 28 ? 0.48 : 0.22);
+    e.flinch = execBoost ? 1.8 : 1.0;
+    e.stun = Math.max(e.stun, dmg >= 28 ? 0.55 : 0.24);
+    if (e.hp > 0 && (head || dmg >= 25 || (e.type === 'boss' ? e.hp <= e.max * 0.22 : e.hp <= e.max * 0.80))) {
+      e.staggerT = Math.max(e.staggerT || 0, 5.5);
+    }
     this.wake(level, e, callbacks);
-    callbacks.puff(e.x, hitY ?? 1.25, e.z, 7, '#b3261e', 5.5, 0.45);
+    const bloodCnt = execBoost > 8 ? 22 : execBoost > 0 ? 14 : 7;
+    const bloodSpd = execBoost > 8 ? 9.5 : 5.5;
+    callbacks.puff(e.x, hitY ?? 1.25, e.z, bloodCnt, '#b3261e', bloodSpd, 0.52);
+    if (execBoost > 0) {
+      callbacks.puff(e.x + (dx || 0) * 0.35, (hitY ?? 1.35) + 0.08, e.z + (dz || 0) * 0.35, 12, '#6e0d09', 7.2, 0.62);
+    }
     const distP = P ? Math.hypot(e.x - P.x, e.z - P.z) : 0;
     audio?.playVoiceShout?.(e.hp <= 0 ? 'die' : 'grunt', distP);
 
     if (e.hp <= 0) {
+      e.executing = false;
       e.flash = 0;
-      if (callbacks.radio && (level.calloutCd || 0) <= 0 && Math.random() < 0.35) {
+      if (callbacks.radio && (level.calloutCd || 0) <= 0 && Math.random() < (execBoost > 8 ? 0.65 : 0.35)) {
         const hasMate = level.enemies.some(o => o !== e && o.hp > 0 && o.awake && Math.hypot(o.x - e.x, o.z - e.z) < 22);
         if (hasMate) {
           level.calloutCd = 8.5;
-          callbacks.radio('帮派分子：「有人倒了！散开找掩体，别露头！」', 2.8);
+          callbacks.radio(
+            execBoost > 8
+              ? '帮派分子：「他一枪把老三贴脸崩飞了！！快退后开火！」'
+              : '帮派分子：「有人倒了！散开找掩体，别露头！」',
+            2.8
+          );
         }
       }
       callbacks.onEnemyKilled(e, head);
@@ -409,7 +434,7 @@ export class EnemyManager {
         const dirSign = dx !== undefined && dx * Math.cos(e.ang) + dz * Math.sin(e.ang) > 0 ? -1 : 1;
         callbacks.poseCorpse?.(e.mesh, dirSign);
 
-        if ((head || dmg >= 34) && u.hatMesh && u.hatMesh.visible) {
+        if ((head || dmg >= 34 || execBoost > 0) && u.hatMesh && u.hatMesh.visible) {
           u.hatMesh.visible = false;
           callbacks.spawnFlyingHat?.(e.type, e.x, (e.ht || 1.75) * 0.92, e.z, dx || 0, dz || 0);
         }
@@ -423,7 +448,7 @@ export class EnemyManager {
           dx || 0,
           dz || 0,
           scale,
-          dmg > 40 ? 7.2 : 3.8
+          execBoost > 0 ? execBoost : dmg > 40 ? 7.2 : 3.8
         );
       }
 

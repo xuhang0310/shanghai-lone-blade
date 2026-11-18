@@ -71,6 +71,7 @@ export class PlayerController {
     this.bulletTime = false;
     this.btK = 0;
     this.diveT = 0;
+    this.execCam = null;
     this.mesh = null;
   }
 
@@ -99,6 +100,7 @@ export class PlayerController {
     this.still = 0;
     this.bulletTime = false;
     this.btK = 0;
+    this.execCam = null;
     if (!this.loadout.length) this.loadout = [0];
     if (this.slot >= this.loadout.length) this.slot = 0;
     this.gun = this.loadout[this.slot];
@@ -348,7 +350,7 @@ export class PlayerController {
       sz = this.z + (targetSz - this.z) * k;
     }
 
-    const dmax = Math.max(1.15, 3.40 - 0.16 * this.gunReady - 1.74 * this.ads - (this.execT > 0 ? 1.15 : 0));
+    const dmax = Math.max(1.15, 3.40 - 0.16 * this.gunReady - 1.74 * this.ads);
     const backDx = -c * cp;
     const backDy = spv;
     const backDz = -s * cp;
@@ -367,22 +369,54 @@ export class PlayerController {
     );
     if (camHit) dist = Math.max(0.45, camHit.dist - 0.35);
 
-    const sk = shake * 0.25;
-    camera.position.set(
-      sx + backDx * dist + rnd(-sk, sk),
-      Math.max(0.28, shoulderY + 0.15 + backDy * dist + rnd(-sk, sk)),
-      sz + backDz * dist + rnd(-sk, sk)
-    );
-    _tmpV.set(
-      camera.position.x + c * cp * 10,
-      camera.position.y - spv * 10,
-      camera.position.z + s * cp * 10
-    );
-    camera.lookAt(_tmpV);
+    const sk = shake * 0.26;
+    const stdX = sx + backDx * dist;
+    const stdY = Math.max(0.28, shoulderY + 0.15 + backDy * dist);
+    const stdZ = sz + backDz * dist;
+    const stdLookX = stdX + c * cp * 10;
+    const stdLookY = stdY - spv * 10;
+    const stdLookZ = stdZ + s * cp * 10;
 
-    const f = baseFov * (1 - 0.28 * this.ads) - 4.5 * (this.btK || 0) - (this.execT > 0 ? 7 : 0) + muzzle * 0.5;
-    if (Math.abs(f - camera.fov) > 0.01) {
-      camera.fov = f;
+    let fovTarget = baseFov * (1 - 0.28 * this.ads) - 4.5 * (this.btK || 0) + muzzle * 0.5;
+
+    // God-of-War One-Shot Dynamic Close-Up Execution Camera (seamless blend in & out, wall-safe!)
+    const ec = this.execCam;
+    if (ec && ec.k > 0.005) {
+      const ek = clamp(ec.k, 0, 1);
+      const orbAng = ec.yaw + Math.PI + ec.side * 0.88;
+      const orbR = ec.dist || 1.82;
+      const odx = Math.cos(orbAng);
+      const odz = Math.sin(orbAng);
+      const anchorY = this.camY + 1.26;
+      let safeR = orbR;
+      const eHit = physics.castRay(ec.mx, anchorY, ec.mz, odx, -0.06, odz, orbR + 0.25, GROUP_WORLD, physics.playerCollider);
+      if (eHit) safeR = Math.max(0.72, eHit.dist - 0.28);
+
+      const exX = ec.mx + odx * safeR;
+      const exY = Math.max(0.45, this.camY + 1.08);
+      const exZ = ec.mz + odz * safeR;
+
+      camera.position.set(
+        stdX + (exX - stdX) * ek + rnd(-sk, sk),
+        stdY + (exY - stdY) * ek + rnd(-sk, sk),
+        stdZ + (exZ - stdZ) * ek + rnd(-sk, sk)
+      );
+      _tmpV.set(
+        stdLookX + (ec.mx - stdLookX) * ek,
+        stdLookY + (this.camY + (ec.lookY || 1.32) - stdLookY) * ek,
+        stdLookZ + (ec.mz - stdLookZ) * ek
+      );
+      camera.lookAt(_tmpV);
+      if (ec.roll) camera.rotateZ(ec.roll * ek);
+      fovTarget = fovTarget - 11 * ek + (ec.fovKick || 0);
+    } else {
+      camera.position.set(stdX + rnd(-sk, sk), stdY + rnd(-sk, sk), stdZ + rnd(-sk, sk));
+      _tmpV.set(stdLookX, stdLookY, stdLookZ);
+      camera.lookAt(_tmpV);
+    }
+
+    if (Math.abs(fovTarget - camera.fov) > 0.01) {
+      camera.fov = fovTarget;
       camera.updateProjectionMatrix();
     }
   }

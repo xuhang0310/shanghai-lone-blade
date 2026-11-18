@@ -52,7 +52,7 @@ export class HudRenderer {
       state, time, player: P, level, camera, input,
       score, kills = 0, banner, msg, msgT, radioMsg, radioT,
       hurtFlash, hurtAng,
-      hitMark, killMark, headMark, aimHit, execTarget,
+      hitMark, killMark, headMark, aimHit, execTarget, execKind, execFX,
       nades, pickups, timeLeft, planted,
       bloomEnabled, qualityLabel, exitOpen, hudIcons
     } = s;
@@ -95,6 +95,47 @@ export class HudRenderer {
         ctx.beginPath();
         ctx.arc(w / 2, h / 2, 92, rel - Math.PI / 2 - 0.34, rel - Math.PI / 2 + 0.34);
         ctx.stroke();
+      }
+    }
+
+    // God-of-War Visceral Execution Screen FX (Radial Speed-Lines + Crimson-Gold Impact Flash + Anamorphic Bars)
+    if (execFX && (execFX.k > 0.01 || execFX.flash > 0.01)) {
+      if (execFX.flash > 0.01) {
+        const fa = clamp(execFX.flash, 0, 1);
+        const fg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.16, w / 2, h / 2, Math.max(w, h) * 0.68);
+        fg.addColorStop(0, `rgba(255, 238, 195, ${fa * 0.22})`);
+        fg.addColorStop(0.55, `rgba(220, 48, 32, ${fa * 0.28})`);
+        fg.addColorStop(1, `rgba(165, 22, 16, ${fa * 0.58})`);
+        ctx.fillStyle = fg;
+        ctx.fillRect(0, 0, w, h);
+      }
+      if (execFX.dash > 0.02 || execFX.flash > 0.08) {
+        const intensity = Math.max(execFX.dash || 0, (execFX.flash || 0) * 0.85);
+        const cx0 = w * 0.5;
+        const cy0 = h * 0.5;
+        const rIn = Math.min(w, h) * 0.34;
+        const rOut = Math.max(w, h) * 0.72;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 220, 152, ${intensity * 0.34})`;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        for (let i = 0; i < 28; i++) {
+          const a0 = (i / 28) * TAU + Math.sin(i * 7.3) * 0.06;
+          const r1 = rIn + ((i * 19) % 7) * 14;
+          ctx.moveTo(cx0 + Math.cos(a0) * r1, cy0 + Math.sin(a0) * r1);
+          ctx.lineTo(cx0 + Math.cos(a0) * rOut, cy0 + Math.sin(a0) * rOut);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (execFX.k > 0.02) {
+        const barH = Math.round(32 * clamp(execFX.k, 0, 1));
+        ctx.fillStyle = 'rgba(4, 6, 12, 0.92)';
+        ctx.fillRect(0, 0, w, barH);
+        ctx.fillRect(0, h - barH, w, barH);
+        ctx.fillStyle = `rgba(229, 179, 82, ${0.45 * execFX.k})`;
+        ctx.fillRect(0, barH - 1, w, 1);
+        ctx.fillRect(0, h - barH, w, 1);
       }
     }
 
@@ -556,35 +597,68 @@ export class HudRenderer {
       }
     }
 
-    // 6. Floating Execution / Stealth Takedown Lock-On Diamond & Callout
-    if (execTarget && state === 'play') {
-      _tmpV.set(execTarget.x, execTarget.ht * 0.7, execTarget.z).project(camera);
-      if (_tmpV.z > -1 && _tmpV.z < 1) {
-        const ex = clamp((_tmpV.x * 0.5 + 0.5) * w, 90, w - 90);
-        const ey = clamp((-_tmpV.y * 0.5 + 0.5) * h, 70, h - 120);
-
-        // Rotating / pulsing target diamond below prompt
-        const pulseR = 11 + Math.sin(time * 8) * 2;
+    // 6. God-of-War Stagger Halos & Double-Ring Rotating Finisher Lock-On Seal
+    if (state === 'play' && P.execT <= 0) {
+      for (const e of level.enemies) {
+        if (e.hp <= 0 || e === execTarget) continue;
+        if ((e.staggerT || 0) <= 0) continue;
+        if (Math.hypot(e.x - P.x, e.z - P.z) > 20) continue;
+        _tmpV.set(e.x, e.ht + 0.52, e.z).project(camera);
+        if (_tmpV.z <= -1 || _tmpV.z >= 1) continue;
+        const sx0 = (_tmpV.x * 0.5 + 0.5) * w;
+        const sy0 = (-_tmpV.y * 0.5 + 0.5) * h;
         ctx.save();
-        ctx.translate(ex, ey + 24);
-        ctx.rotate(Math.PI / 4);
-        ctx.strokeStyle = execTarget.awake ? '#ff5242' : '#ffd27a';
+        ctx.translate(sx0, sy0);
+        ctx.rotate(time * 2.8);
+        ctx.strokeStyle = 'rgba(255, 188, 72, 0.85)';
         ctx.lineWidth = 2;
-        ctx.strokeRect(-pulseR * 0.5, -pulseR * 0.5, pulseR, pulseR);
+        ctx.beginPath();
+        ctx.arc(0, 0, 9, 0, Math.PI * 1.35);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    if (execTarget && state === 'play' && P.execT <= 0) {
+      _tmpV.set(execTarget.x, execTarget.ht * 0.72, execTarget.z).project(camera);
+      if (_tmpV.z > -1 && _tmpV.z < 1) {
+        const ex = clamp((_tmpV.x * 0.5 + 0.5) * w, 96, w - 96);
+        const ey = clamp((-_tmpV.y * 0.5 + 0.5) * h, 78, h - 126);
+        const isSmash = execKind === 'smash';
+        const isStealth = !execTarget.awake && !isSmash;
+        const ringCol = isSmash ? '#ffb84d' : isStealth ? '#ffd87a' : '#ff4636';
+
+        // Outer rotating segmented God-of-War Finisher Seal around chest
+        const sealY = ey + 28;
+        const rOuter = 20 + Math.sin(time * 9) * 2.2;
+        ctx.save();
+        ctx.translate(ex, sealY);
+        ctx.rotate(time * 2.4);
+        ctx.strokeStyle = ringCol;
+        ctx.lineWidth = 2.4;
+        for (let k = 0; k < 4; k++) {
+          ctx.beginPath();
+          ctx.arc(0, 0, rOuter, k * (Math.PI / 2) + 0.18, (k + 1) * (Math.PI / 2) - 0.18);
+          ctx.stroke();
+        }
+        ctx.rotate(-time * 4.8 + Math.PI / 4);
+        ctx.strokeStyle = '#ffe29a';
+        ctx.lineWidth = 1.8;
+        ctx.strokeRect(-8, -8, 16, 16);
         ctx.restore();
 
-        const label = execTarget.awake ? '[E] 近身处决' : '[E] 悄声暗杀';
-        ctx.font = '700 13px ' + FONT;
-        const bw = ctx.measureText(label).width + 28;
-        chamferPath(ctx, ex - bw * 0.5, ey - 16, bw, 28, 5);
-        ctx.fillStyle = 'rgba(18, 12, 18, 0.90)';
+        const label = isSmash ? '[E] 重托破防猛击' : isStealth ? '[E] 悄声抹喉暗杀' : '[E] 猛袭贴脸处决';
+        ctx.font = '700 13.5px ' + FONT;
+        const bw = ctx.measureText(label).width + 30;
+        chamferPath(ctx, ex - bw * 0.5, ey - 18, bw, 30, 5);
+        ctx.fillStyle = isSmash ? 'rgba(28, 20, 12, 0.92)' : 'rgba(26, 10, 12, 0.92)';
         ctx.fill();
-        ctx.strokeStyle = execTarget.awake ? '#ff5e4d' : '#ebb858';
-        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = ringCol;
+        ctx.lineWidth = 1.8;
         ctx.stroke();
         ctx.textAlign = 'center';
-        ctx.fillStyle = '#ffe094';
-        ctx.fillText(label, ex, ey + 3);
+        ctx.fillStyle = '#ffe7a4';
+        ctx.fillText(label, ex, ey + 2);
       }
     }
 
