@@ -306,7 +306,7 @@ export class GameRenderer {
       this.scene.add(l);
     }
 
-    this.playerFill = new THREE.PointLight(0xa4c4f4, 3.2, 15, 1.4);
+    this.playerFill = new THREE.PointLight(0xd8d4cc, 0.85, 14, 1.7);
     this.muzzleLight = new THREE.PointLight(0xffd088, 0, 15, 1.5);
     this.boomLight = new THREE.PointLight(0xff9a40, 0, 36, 1.4);
     this.fireLight = new THREE.PointLight(0xff7a22, 0, 18, 1.5);
@@ -380,9 +380,15 @@ export class GameRenderer {
       dark: new THREE.MeshStandardMaterial({ color: 0x121215, roughness: 0.55, metalness: 0.45 }),
       hat: new THREE.MeshPhysicalMaterial({
         vertexColors: true,
-        roughness: 0.56,
-        clearcoat: 0.48,
-        clearcoatRoughness: 0.28,
+        roughness: 0.94,
+        metalness: 0.0,
+        ior: 1.44,
+        reflectivity: 0.10,
+        envMapIntensity: 0.20,
+        clearcoat: 0.0,
+        sheen: 0.22,
+        sheenRoughness: 0.92,
+        sheenColor: new THREE.Color(0x2b2520),
         side: THREE.DoubleSide
       }),
       skin: new THREE.MeshStandardMaterial({ color: 0xd2aa85, roughness: 0.78 }),

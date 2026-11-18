@@ -7,7 +7,8 @@ export const PLAYER_RADIUS = 0.42;
 export const PLAYER_HEIGHT = 1.75;
 export const PLAYER_CROUCH_HEIGHT = 1.15;
 export const PLAYER_ROLL_HEIGHT = 0.9;
-export const PLAYER_SPEED = 7.8;
+export const PLAYER_WALK_SPEED = 4.55;
+export const PLAYER_SPEED = 8.1;
 export const PLAYER_ROLL_SPEED = 9.4;
 export const PLAYER_JUMP_VEL = 6.8;
 
@@ -79,7 +80,7 @@ export const ENEMY_TYPES = {
 };
 
 export const CHAR_STYLES = {
-  hero:    { model: 'man',     shirt: '#3b424c', pants: '#1f222a', vest: '#23262e', tie: '#8a1e1a', coat: '#2b303a', scarf: '#8f221d', hat: 'fedora', hatCol: '#382a1e', band: '#16100e', gun: 'pistol', trench: true },
+  hero:    { model: 'man',     shirt: '#3a3d44', pants: '#212328', vest: '#272930', tie: '#8a1e1a', coat: '#363840', scarf: '#8e241f', hat: 'fedora', hatCol: '#382d23', band: '#16110e', gun: 'pistol', trench: true },
   thug:    { model: 'man',     shirt: '#2e4166', pants: '#1e222b', vest: '#1b263d', belt: '#9a2a24', hat: 'cap',    hatCol: '#2d323d', gun: 'knife' },
   gunman:  { model: 'man',     shirt: '#1d1e24', pants: '#101014', vest: '#15151a', tie: '#8c1a16', coat: '#181920', hat: 'fedora', hatCol: '#17171c', band: '#8c1a16', gun: 'pistol', longcoat: true },
   soldier: { model: 'soldier', shirt: '#6a633d', pants: '#585132', helmet: true,  gun: 'shotgun', pouches: true },

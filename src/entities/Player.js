@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   GRAVITY,
+  PLAYER_WALK_SPEED,
   PLAYER_SPEED,
   PLAYER_ROLL_SPEED,
   PLAYER_JUMP_VEL,
@@ -21,6 +22,8 @@ const _tmpV = new THREE.Vector3();
 export class PlayerController {
   constructor() {
     this.loadout = [0, 3, 5];
+    this.walkDefault = true;
+    this.combatStance = false;
     this.resetAll();
   }
 
@@ -57,6 +60,9 @@ export class PlayerController {
     this.execT = 0;
     this.nadeCd = 0;
     this.moving = false;
+    this.sprinting = false;
+    this.gunHoldT = 0;
+    this.gunReady = 0;
     this.ads = 0;
     this.recoil = 0;
     this.bloom = 0;
@@ -83,6 +89,9 @@ export class PlayerController {
     this.execT = 0;
     this.stepAccum = 0;
     this.reloadT = 0;
+    this.sprinting = false;
+    this.gunHoldT = 0;
+    this.gunReady = this.combatStance ? 1 : 0;
     this.ads = 0;
     this.recoil = 0;
     this.bloom = 0;
@@ -202,6 +211,7 @@ export class PlayerController {
     this.nadeCd -= dt;
     if (this.inv > 0) this.inv -= dt;
     if (this.execT > 0) this.execT = Math.max(0, this.execT - dt);
+    if (this.gunHoldT > 0) this.gunHoldT = Math.max(0, this.gunHoldT - dt);
 
     const wantAds = input.mouse.right && !input.isTouch && this.rollT <= 0 && this.reloadT <= 0 && this.execT <= 0 ? 1 : 0;
     this.ads += (wantAds - this.ads) * Math.min(1, dt * 12);
@@ -214,11 +224,34 @@ export class PlayerController {
     const s = Math.sin(this.ang);
     const mx = c * f - s * r;
     const mz = s * f + c * r;
+    const hasMove = !!(mx || mz);
+
+    const shiftHeld = !!(input.keys.ShiftLeft || input.keys.ShiftRight);
+    const stickMag = input.sticks.move ? Math.hypot(input.sticks.move.dx, input.sticks.move.dy) : 1;
+    this.sprinting =
+      hasMove &&
+      !this.crouch &&
+      wantAds === 0 &&
+      this.rollT <= 0 &&
+      this.diveT <= 0 &&
+      (input.isTouch ? stickMag > 0.72 : this.walkDefault ? shiftHeld : !shiftHeld);
+
+    const wantReady =
+      wantAds > 0 ||
+      input.mouse.down ||
+      input.touchFire ||
+      this.diveT > 0 ||
+      this.gunHoldT > 0 ||
+      (this.combatStance && !this.sprinting)
+        ? 1
+        : 0;
+    this.gunReady += (wantReady - this.gunReady) * Math.min(1, dt * (wantReady ? 14 : 4.2));
 
     let moveX = 0;
     let moveZ = 0;
     if (this.execT > 0) {
       this.moving = false;
+      this.sprinting = false;
     } else if (this.rollT > 0) {
       this.rollT -= dt;
       moveX = this.rdx * PLAYER_ROLL_SPEED * dt;
@@ -230,19 +263,22 @@ export class PlayerController {
       moveZ = this.rdz * PLAYER_ROLL_SPEED * 1.08 * dt;
       this.moving = true;
     } else {
-      const sp = PLAYER_SPEED * (1 - 0.5 * this.ads) * (this.crouch ? 0.5 : 1);
+      let sp = this.sprinting ? PLAYER_SPEED : PLAYER_WALK_SPEED;
+      if (this.crouch) sp = PLAYER_WALK_SPEED * 0.68;
+      if (this.ads > 0.05) sp = sp * (1 - 0.32 * this.ads);
       moveX = mx * sp * dt;
       moveZ = mz * sp * dt;
-      this.moving = !!(mx || mz);
-      if (this.moving) this.walk += dt * 11;
+      this.moving = hasMove;
+      if (this.moving) this.walk += dt * (this.sprinting ? 11.5 : 6.8);
     }
 
     if (this.moving && !this.air && this.rollT <= 0 && this.diveT <= 0 && this.execT <= 0) {
       this.stepAccum += dt;
-      const stepInterval = this.crouch ? 0.52 : this.ads > 0.5 ? 0.44 : 0.34;
+      const stepInterval = this.crouch ? 0.54 : this.ads > 0.5 ? 0.48 : this.sprinting ? 0.29 : 0.46;
       if (this.stepAccum >= stepInterval) {
         this.stepAccum = 0;
-        audio.playStep(levelStyle, this.crouch ? 0.11 : 0.22, this.crouch);
+        const stepVol = this.crouch ? 0.10 : this.sprinting ? 0.25 : 0.16;
+        audio.playStep(levelStyle, stepVol, this.crouch);
       }
     } else {
       this.stepAccum = Math.min(this.stepAccum, 0.2);
@@ -288,8 +324,8 @@ export class PlayerController {
     const cp = Math.cos(pe);
     const spv = Math.sin(pe);
 
-    // Shoulder position with wall occlusion check (tight cinema over-the-shoulder framing)
-    const shoulderOff = 0.68 - 0.22 * this.ads;
+    // Shoulder position with wall occlusion check (relaxed stroll framing -> tight over-shoulder combat framing)
+    const shoulderOff = 0.58 + 0.10 * this.gunReady - 0.22 * this.ads;
     const targetSx = this.x - s * shoulderOff;
     const targetSz = this.z + c * shoulderOff;
     const shoulderY = this.camY + 1.62 - 0.46 * this.crouchK;
@@ -312,7 +348,7 @@ export class PlayerController {
       sz = this.z + (targetSz - this.z) * k;
     }
 
-    const dmax = Math.max(1.15, 3.25 - 1.75 * this.ads - (this.execT > 0 ? 1.15 : 0));
+    const dmax = Math.max(1.15, 3.40 - 0.16 * this.gunReady - 1.74 * this.ads - (this.execT > 0 ? 1.15 : 0));
     const backDx = -c * cp;
     const backDy = spv;
     const backDz = -s * cp;

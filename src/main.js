@@ -81,6 +81,7 @@ let shockwaves = [];
 let prevArmoryState = 'menu';
 let armorySlot = 0;
 let inspectGunIdx = 0;
+let shiftDownAt = 0;
 let bossConfronted = false;
 let reloadSpeakCd = 0;
 let execTarget = null;
@@ -1079,12 +1080,12 @@ function menu() {
     '<p>黑龙帮盘踞闸北与十六铺，雨夜秘密卸运军火。<b>从八款民国制式火器中精挑三把入套，穿街过巷，手刃帮主“黑龙”。</b></p>' +
     renderLoadoutStrip() +
     '<div class="key-grid">' +
-    '<div class="key-item"><b>WASD · C · 空格</b><span>街巷战术移动 · 蹲伏潜行 · 翻跃掩体</span></div>' +
-    '<div class="key-item"><b>左键射击 · 右键肩射</b><span>实感弹道击发 · 长按右键越肩精准瞄准</span></div>' +
+    '<div class="key-item"><b>WASD 漫步 · 按住Shift 奔跑</b><span>从容巡街漫步 · 长按Shift疾跑 · 点按Shift/Alt翻滚</span></div>' +
+    '<div class="key-item"><b>[Z] 收放持枪 · 右键越肩瞄准</b><span>轻松垂手持枪 / 常驻持枪戒备 · 左键即时举枪射击</span></div>' +
     '<div class="key-item"><b>[1][2][3] / Q · [B] 军械箱</b><span>三格装备栏秒切火器 · 打开八枪预览军械箱</span></div>' +
     '<div class="key-item"><b>[E] 处决 · [G] 手雷 · [F] 燃烧瓶</b><span>悄声暗杀/近身处决 · 破片爆破 · 烈焰封路</span></div>' +
     '<div class="key-item"><b>[Tab] 专注 · 右键+Shift</b><span>开启 0.28x 子弹时间 · 飞身鱼跃慢镜射击</span></div>' +
-    '<div class="key-item"><b>[R] 换弹 · [H] 画质 · [M] 氛围</b><span>战术换弹 · 三档渲染切换 · 雨夜低频声场</span></div>' +
+    '<div class="key-item"><b>[C] 蹲伏 · [R] 换弹 · [H] 画质</b><span>潜行低姿 · 战术换弹 · 三档电影级画质切换</span></div>' +
     '</div>' +
     (best ? `<p>最高战功纪录 <b>${best}</b></p>` : '') +
     '<p class="credit">Three.js r187 PBR 渲染管线 + Rapier3D 刚体物理引擎 · 实录火器声学卷积混响</p>',
@@ -1271,9 +1272,14 @@ function updatePlay(dt) {
     }
   }
 
+  if (firing && P.rollT <= 0 && P.execT <= 0) {
+    P.gunHoldT = Math.max(P.gunHoldT, 2.4);
+  }
   if (firing && P.cd <= 0 && P.reloadT <= 0 && P.rollT <= 0 && P.execT <= 0 && P.mags[P.gun] > 0) {
     P.cd = g.rate;
     P.mags[P.gun]--;
+    P.gunHoldT = 2.6;
+    P.gunReady = Math.max(P.gunReady, 0.92);
     audio.sfx(g.snd);
 
     const c = Math.cos(P.ang);
@@ -1671,13 +1677,20 @@ function syncScene(dt) {
     const rolling = P.rollT > 0;
     const diving = P.diveT > 0;
     const execing = P.execT > 0;
+    const walking = P.moving && !P.sprinting && !rolling;
     const pu = playerMesh.userData;
-    pu.rate = rolling ? 1.6 : diving ? 0.45 : execing ? 2.2 : P.air ? 0.5 : P.ads > 0.5 ? 1.5 : 1.12;
+    pu.rate = rolling ? 1.6 : diving ? 0.45 : execing ? 2.2 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
     pu.strike = execing ? Math.sin((P.execT / 0.58) * Math.PI) : 0;
-    const mode = state === 'play' && (P.moving || rolling || P.air) && !diving ? (P.ads > 0.5 && !rolling ? 'Walk' : 'Run') : 'Idle';
+    const mode =
+      state === 'play' && (P.moving || rolling || P.air) && !diving
+        ? rolling || P.sprinting
+          ? 'Run'
+          : 'Walk'
+        : 'RelaxIdle';
     const aimElev = state === 'play' && !rolling ? -(P.pitch - P.recoil) * 0.65 : 0;
+    const readyW = diving ? 1 : rolling || execing ? 0 : P.gunReady;
 
-    cf.poseMesh(playerMesh, P.x, P.z, rolling ? Math.atan2(P.rdz, P.rdx) : P.ang, mode, dt, aimElev, 0);
+    cf.poseMesh(playerMesh, P.x, P.z, rolling ? Math.atan2(P.rdz, P.rdx) : P.ang, mode, dt, aimElev, 0, readyW, P.ads);
     playerMesh.position.y = P.y;
     if (rolling) {
       pu.pivot.rotation.x = 0;
@@ -1711,8 +1724,8 @@ function syncScene(dt) {
   }
 
   if (level.hostage?.mesh) {
-    level.hostage.mesh.userData.rate = 1.1;
-    cf.poseMesh(level.hostage.mesh, level.hostage.x, level.hostage.z, level.hostage.ang, level.hostage.moving ? 'Run' : 'Idle', dt);
+    level.hostage.mesh.userData.rate = 1.05;
+    cf.poseMesh(level.hostage.mesh, level.hostage.x, level.hostage.z, level.hostage.ang, level.hostage.moving ? 'Run' : 'RelaxIdle', dt, 0, 0, 0, 0);
   }
 
   for (const c of level.charges) {
@@ -1753,9 +1766,12 @@ function syncScene(dt) {
     m.visible = !far;
     if (far) continue;
     const u = m.userData;
-    u.rate = clamp(e.spd / 5.6, 0.6, 1.25);
+    u.rate = e.awake ? clamp(e.spd / 5.6, 0.72, 1.25) : 0.95;
     u.strike = u.melee ? clamp((e.cd - 0.45) / 0.3, 0, 1) : 0;
-    cf.poseMesh(m, e.x, e.z, e.ang, e.awake && e.moving ? (e.spd < 2.8 ? 'Walk' : 'Run') : 'Idle', dt, 0, e.flinch || 0);
+    const eMode = !e.awake ? 'RelaxIdle' : e.moving ? (e.spd < 3.1 ? 'Walk' : 'Run') : 'Idle';
+    const eReady = e.awake ? 1 : 0.06;
+    const eAds = e.aimT > 0 || e.burst > 0 ? 1 : 0.35;
+    cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, e.flinch || 0, eReady, eAds);
     u.mat.emissive.setHex(e.flash > 0 ? 0xaa3020 : 0);
     if (u.coatMat) u.coatMat.emissive.setHex(e.flash > 0 ? 0x551810 : 0);
     u.glint.visible = e.aimT > 0 || e.burst > 0 || e.callT > 0;
@@ -1875,7 +1891,7 @@ function syncScene(dt) {
   gr.sun.position.set(P.x + 24, 46, P.z + 16);
   gr.sun.target.position.set(P.x, 0, P.z);
   gr.moon.position.set(gr.camera.position.x + 110, 95, gr.camera.position.z - 230);
-  gr.playerFill.position.set(P.x - Math.cos(P.ang) * 1.1, P.y + 2.45, P.z - Math.sin(P.ang) * 1.1);
+  gr.playerFill.position.set(P.x, P.y + 3.6, P.z);
 
   lampT -= dt;
   if (lampT <= 0) {
@@ -2057,8 +2073,24 @@ async function boot() {
           radio('沈孤鸿：「换弹压哨……别露头！」', 2.0);
         }
       } else if (code === 'Space') P.jump(audio, state);
-      else if (code === 'ShiftLeft' || code === 'ShiftRight') P.roll(input, audio);
-      else if (code === 'KeyG') throwNade();
+      else if (code === 'ShiftLeft' || code === 'ShiftRight') {
+        if ((P.bulletTime || input.mouse.right) && P.focus >= 16) {
+          shiftDownAt = 0;
+          P.roll(input, audio);
+        } else {
+          shiftDownAt = performance.now();
+        }
+      } else if (code === 'AltLeft' || code === 'AltRight' || code === 'KeyX') {
+        P.roll(input, audio);
+      } else if (code === 'KeyZ') {
+        P.combatStance = !P.combatStance;
+        if (!P.combatStance) P.gunHoldT = 0;
+        audio.sfx('tick');
+        say(P.combatStance ? '姿态：常驻举枪戒备 [Z]' : '姿态：轻松自然持枪 [Z]');
+      } else if (code === 'CapsLock') {
+        P.walkDefault = !P.walkDefault;
+        say(P.walkDefault ? '步态：默认漫步（按住Shift奔跑）' : '步态：默认奔跑（按住Shift漫步）');
+      } else if (code === 'KeyG') throwNade();
       else if (code === 'KeyF') throwMolo();
       else if (code === 'KeyM') {
         const on = audio.toggleMusic();
@@ -2076,6 +2108,14 @@ async function boot() {
         }
       } else if (code === 'KeyC' || code === 'ControlLeft') {
         P.crouch = !P.crouch;
+      }
+    },
+    onKeyUp: code => {
+      if ((code === 'ShiftLeft' || code === 'ShiftRight') && state === 'play') {
+        if (shiftDownAt > 0 && performance.now() - shiftDownAt < 210) {
+          P.roll(input, audio);
+        }
+        shiftDownAt = 0;
       }
     }
   });

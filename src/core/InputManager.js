@@ -49,6 +49,7 @@ export class InputManager {
 
     window.addEventListener('keyup', e => {
       this.keys[e.code] = false;
+      this.cb.onKeyUp?.(e.code);
     });
 
     window.addEventListener('blur', () => {
@@ -164,7 +165,7 @@ export class InputManager {
 
     bindTouchBtn('bJump', () => this.cb.onKeyDown?.('Space'));
     bindTouchBtn('bGun', () => this.cb.onKeyDown?.('KeyQ'));
-    bindTouchBtn('bRoll', () => this.cb.onKeyDown?.('ShiftLeft'));
+    bindTouchBtn('bRoll', () => this.cb.onKeyDown?.('AltLeft'));
     bindTouchBtn('bPause', () => this.cb.onPause?.());
     bindTouchBtn('bNade', () => this.cb.onKeyDown?.('KeyG'));
     bindTouchBtn('bExec', () => this.cb.onKeyDown?.('KeyE'));

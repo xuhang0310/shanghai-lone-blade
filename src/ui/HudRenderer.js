@@ -396,9 +396,22 @@ export class HudRenderer {
     ctx.fillStyle = '#f5ebd6';
     ctx.fillText(g.fullName, blX + 12, wCardY + 22);
 
-    const stanceTxt = P.diveT > 0 ? '飞扑慢镜' : P.ads > 0.35 ? '精准肩射' : P.crouch ? '潜行蹲伏' : g.caliber || '';
+    const stanceTxt =
+      P.diveT > 0
+        ? '飞扑慢镜'
+        : P.ads > 0.35
+          ? '精准肩射'
+          : P.crouch
+            ? '潜行蹲伏'
+            : P.sprinting
+              ? '疾步奔跑'
+              : P.gunReady > 0.55
+                ? '持枪戒备 [Z收枪]'
+                : P.moving
+                  ? '从容漫步 [Shift奔跑]'
+                  : '轻松持枪 [Z戒备 / 右键瞄准]';
     ctx.font = '600 10.5px ' + FONT;
-    ctx.fillStyle = P.ads > 0.35 ? '#ffd67c' : '#a8a090';
+    ctx.fillStyle = P.ads > 0.35 || P.gunReady > 0.55 ? '#ffd67c' : '#b5ad9c';
     ctx.fillText(stanceTxt, blX + 12, wCardY + 38);
 
     // Big tabular ammo readout on right side of weapon plaque
@@ -443,7 +456,7 @@ export class HudRenderer {
       ctx.font = '600 11px ' + FONT;
       ctx.fillStyle = 'rgba(220, 210, 190, 0.72)';
       ctx.fillText(
-        `[1-3 / Q] 切换随身火器  ·  [B] 打开军械装备箱  ·  [H] 画质：${qualityLabel || (bloomEnabled ? '极致电影' : '流畅直出')}`,
+        `[Z] 轻松/持枪  ·  [Shift] 奔跑  ·  [B] 军械箱  ·  [H] ${qualityLabel || (bloomEnabled ? '极致电影' : '流畅直出')}`,
         w - 16,
         dockY - 10
       );

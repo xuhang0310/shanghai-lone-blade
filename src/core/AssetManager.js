@@ -237,8 +237,109 @@ export class AssetManager {
       this.soldierClips[cn] = new THREE.AnimationClip(cn, c.dur, solTracks);
     }
 
+    this.manClips.RelaxIdle = this._buildRelaxIdleClip(this.glb.man);
+    this.soldierClips.RelaxIdle = this._buildRelaxIdleClip(this.glb.soldier);
+
     this.manMetrics = this._measureRig(this.glb.man, this.manClips.Idle);
     this.soldierMetrics = this._measureRig(this.glb.soldier, this.soldierClips.Idle);
+  }
+
+  _buildRelaxIdleClip(rigRoot) {
+    const tmp = rigRoot.clone(true);
+    tmp.rotation.y = Math.PI / 2;
+    const B = {};
+    tmp.traverse(o => {
+      if (o.isBone && !B[o.name]) B[o.name] = o;
+    });
+    tmp.updateMatrixWorld(true);
+
+    const point = (b, x, y, z) => {
+      if (!b) return;
+      const ch = b.children.find(c => c.isBone);
+      if (!ch) return;
+      b.updateWorldMatrix(true, true);
+      const cur = ch.getWorldPosition(new THREE.Vector3()).sub(b.getWorldPosition(new THREE.Vector3())).normalize();
+      const dq = new THREE.Quaternion().setFromUnitVectors(cur, new THREE.Vector3(x, y, z).normalize());
+      const wq = b.getWorldQuaternion(new THREE.Quaternion());
+      const pq = b.parent.getWorldQuaternion(new THREE.Quaternion());
+      b.quaternion.copy(pq.invert().multiply(dq.multiply(wq)));
+      b.updateWorldMatrix(false, true);
+    };
+
+    const mulEuler = (b, rx, ry, rz) => {
+      if (!b) return;
+      b.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)));
+    };
+
+    // Upright relaxed standing posture (soft knees, feet flush with Walk/Run ground plane, arms relaxed at sides)
+    if (B.Hips) {
+      B.Hips.position.z += 2.15;
+      mulEuler(B.Hips, 0, 0, 0.055);
+    }
+    mulEuler(B.Spine, 0.03, 0, -0.02);
+    mulEuler(B.LeftUpLeg, 0.06, 0, 0.03);
+    mulEuler(B.LeftLeg, -0.11, 0, 0);
+    mulEuler(B.RightUpLeg, -0.02, 0, -0.03);
+    mulEuler(B.RightLeg, -0.07, 0, 0);
+
+    point(B.LeftArm, 0.02, -0.97, -0.14);
+    point(B.LeftForeArm, 0.24, -0.96, 0.04);
+    point(B.RightArm, 0.08, -0.96, 0.16);
+    point(B.RightForeArm, 0.42, -0.89, 0.03);
+
+    const trackBones = [
+      'Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head',
+      'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand',
+      'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand',
+      'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase',
+      'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'
+    ].filter(n => B[n]);
+
+    const baseQ = {};
+    for (const n of trackBones) baseQ[n] = B[n].quaternion.clone();
+    const baseHips = B.Hips ? B.Hips.position.clone() : new THREE.Vector3();
+
+    const N = 49;
+    const dur = 2.6;
+    const times = new Float32Array(N);
+    const hipsPos = new Float32Array(N * 3);
+    const qArrays = {};
+    for (const n of trackBones) qArrays[n] = new Float32Array(N * 4);
+
+    const qTmp = new THREE.Quaternion();
+    const eTmp = new THREE.Euler();
+
+    for (let i = 0; i < N; i++) {
+      const t = (i / (N - 1)) * dur;
+      const th = (i / (N - 1)) * Math.PI * 2;
+      times[i] = t;
+
+      hipsPos[i * 3] = baseHips.x;
+      hipsPos[i * 3 + 1] = baseHips.y + Math.sin(th) * 0.08;
+      hipsPos[i * 3 + 2] = baseHips.z + Math.sin(th) * 0.22;
+
+      for (const n of trackBones) {
+        qTmp.copy(baseQ[n]);
+        if (n === 'Spine1') {
+          qTmp.multiply(new THREE.Quaternion().setFromEuler(eTmp.set(Math.sin(th) * 0.016, 0, 0)));
+        } else if (n === 'Spine2') {
+          qTmp.multiply(new THREE.Quaternion().setFromEuler(eTmp.set(-0.015 + Math.sin(th - 0.35) * 0.022, Math.cos(th) * 0.014, 0)));
+        } else if (n === 'Head') {
+          qTmp.multiply(new THREE.Quaternion().setFromEuler(eTmp.set(0.02 - Math.sin(th - 0.35) * 0.016, Math.cos(th) * 0.024, 0)));
+        } else if (n === 'LeftArm') {
+          qTmp.multiply(new THREE.Quaternion().setFromEuler(eTmp.set(Math.sin(th - 0.5) * 0.015, 0, -Math.sin(th) * 0.01)));
+        } else if (n === 'RightArm') {
+          qTmp.multiply(new THREE.Quaternion().setFromEuler(eTmp.set(Math.sin(th - 0.2) * 0.014, 0, Math.sin(th) * 0.01)));
+        }
+        qTmp.toArray(qArrays[n], i * 4);
+      }
+    }
+
+    const tracks = [new THREE.VectorKeyframeTrack('Hips.position', times, hipsPos)];
+    for (const n of trackBones) {
+      tracks.push(new THREE.QuaternionKeyframeTrack(`${n}.quaternion`, times, qArrays[n]));
+    }
+    return new THREE.AnimationClip('RelaxIdle', dur, tracks);
   }
 
   _measureRig(rigRoot, idleClip) {

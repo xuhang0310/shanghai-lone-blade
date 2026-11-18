@@ -10,10 +10,15 @@ const ARMS = [
 ];
 
 const POSE = {
-  pistol: [[0.85, -0.3, 0.12], [0.97, 0.12, -0.14], [0.72, -0.45, 0.3], [0.8, 0.24, 0.52]],
-  long: [[0.22, -0.9, 0.25], [0.92, 0.2, -0.3], [0.74, -0.5, 0.22], [0.78, 0.12, 0.6]],
-  strike: [[0.8, 0.35, 0.1], [0.9, 0.05, -0.25], null, null]
+  carry_pistol: [[0.08, -0.96, 0.16], [0.44, -0.88, 0.03], null, null],
+  carry_long:   [[0.16, -0.88, 0.22], [0.78, -0.32, -0.28], [0.48, -0.80, 0.16], [0.80, -0.22, 0.44]],
+  hip_pistol:   [[0.70, -0.48, 0.15], [0.96, 0.09, -0.12], [0.54, -0.66, 0.22], [0.74, 0.12, 0.48]],
+  pistol:       [[0.85, -0.3, 0.12], [0.97, 0.12, -0.14], [0.72, -0.45, 0.3], [0.8, 0.24, 0.52]],
+  long:         [[0.22, -0.9, 0.25], [0.92, 0.2, -0.3], [0.74, -0.5, 0.22], [0.78, 0.12, 0.6]],
+  strike:       [[0.8, 0.35, 0.1], [0.9, 0.05, -0.25], null, null]
 };
+
+const _q2 = new THREE.Quaternion();
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const _q = new THREE.Quaternion();
@@ -295,7 +300,9 @@ export class CharacterFactory {
       const px = pxIdx % c.width;
       const py = (pxIdx / c.width) | 0;
       const mVal = mask[i];
-      const grain = 0.92 + (((px * 7 + py * 13) ^ (px >> 2)) & 15) / 115;
+      const zig = ((px >> 2) & 1) ? ((px + py) & 3) : ((px - py + 1024) & 3);
+      const twill = (zig - 1.5) * 0.032;
+      const grain = 0.92 + (((px * 7 + py * 13) ^ (px >> 2)) & 15) / 135 + twill;
 
       // 1. Hair / Scalp coverage: eliminate pink bald patch completely
       if (mVal >= 12 && mVal <= 22) {
@@ -580,7 +587,11 @@ export class CharacterFactory {
       const isCuff = aw > 0.4 && Math.abs(x) > 0.37 && y < 0.16;
       const nearLapel = y > 0.44 && z > 0.11 && Math.abs(Math.abs(x + 0.006) - (y - 0.42) * 0.34) < 0.036;
       const offset = isCuff ? 0.015 : nearLapel ? 0.016 : 0.011;
-      const col = nearLapel ? lapelCol : coatCol;
+      const backSeam = z < -0.04 && Math.abs(x) < 0.013 ? 0.88 : 1.0;
+      const gatherFold = y < 0.32 ? 0.94 + 0.06 * Math.sin(x * 36 + z * 30) : 1.0;
+      const shade = backSeam * gatherFold;
+      const baseC = nearLapel ? lapelCol : coatCol;
+      const col = { r: baseC.r * shade, g: baseC.g * shade, b: baseC.b * shade };
 
       pushSkinnedVert(
         x + nx * offset,
@@ -681,12 +692,15 @@ export class CharacterFactory {
       for (let c = 0; c <= cols; c++) {
         const u = c / cols;
         const th = thetaStart + (thetaEnd - thetaStart) * u;
-        const pleat = (1 + 0.035 * Math.sin(th * 7) * t);
+        const pleatWave = Math.sin(th * 7);
+        const pleat = 1 + 0.035 * pleatWave * t;
         const vx = env.cx + Math.sin(th) * rx * pleat;
         const vz = env.cz + Math.cos(th) * rz * pleat;
         const nx = Math.sin(th);
         const nz = Math.cos(th);
         const lenN = Math.hypot(nx, nz) || 1;
+        const backVent = Math.cos(th) < -0.92 && Math.abs(Math.sin(th)) < 0.12 ? 0.85 : 1.0;
+        const foldAO = (0.93 + 0.07 * pleatWave * (0.3 + 0.7 * t)) * backVent;
 
         // Weight smoothly transitions from 100% Hips(0) at waist to 90% UpLegs(1/6) at hem
         const legTotal = Math.pow(t, 0.78) * 0.90;
@@ -704,7 +718,8 @@ export class CharacterFactory {
           nz: nz / lenN,
           hipsW,
           lW,
-          rW
+          rW,
+          foldAO
         });
       }
       skirtGrid.push(rowVerts);
@@ -716,7 +731,12 @@ export class CharacterFactory {
         const b = skirtGrid[r][c + 1];
         const d = skirtGrid[r + 1][c];
         const e = skirtGrid[r + 1][c + 1];
-        const emit = v => pushSkinnedVert(v.x, v.y, v.z, v.nx, v.ny, v.nz, coatCol, 0, 1, 6, 0, v.hipsW, v.lW, v.rW, 0);
+        const emit = v =>
+          pushSkinnedVert(
+            v.x, v.y, v.z, v.nx, v.ny, v.nz,
+            { r: coatCol.r * v.foldAO, g: coatCol.g * v.foldAO, b: coatCol.b * v.foldAO },
+            0, 1, 6, 0, v.hipsW, v.lW, v.rW, 0
+          );
         emit(a); emit(d); emit(e);
         emit(a); emit(e); emit(b);
       }
@@ -910,22 +930,13 @@ export class CharacterFactory {
 
     const mat = new THREE.MeshStandardMaterial({
       map: this._getSkinTex(kind),
-      ...(isSoldier ? {} : { normalMap: this.assets.manNor, roughnessMap: this.assets.manOrm }),
-      roughness: isSoldier ? 0.78 : 0.86,
-      metalness: 0.06
+      ...(isSoldier ? {} : { normalMap: this.assets.manNor, normalScale: new THREE.Vector2(0.75, 0.75) }),
+      roughness: isSoldier ? 0.88 : 0.93,
+      metalness: 0.0,
+      envMapIntensity: 0.22
     });
     mat.userData.own = true;
     const isHero = kind === 'hero';
-    mat.onBeforeCompile = shader => {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <emissivemap_fragment>',
-        `#include <emissivemap_fragment>
-        vec3 rimV = normalize(vViewPosition);
-        float rimN = 1.0 - clamp(abs(dot(normalize(normal), rimV)), 0.0, 1.0);
-        totalEmissiveRadiance += ${isHero ? 'vec3(0.20, 0.30, 0.50)' : 'vec3(0.22, 0.26, 0.38)'} * pow(rimN, 2.7);`
-      );
-    };
-    mat.customProgramCacheKey = () => (isHero ? 'char-skin-rim-hero' : isSoldier ? 'char-skin-rim-sol' : 'char-skin-rim-foe');
 
     const pivot = new THREE.Group();
     pivot.position.y = 0.9;
@@ -955,7 +966,7 @@ export class CharacterFactory {
       }
     });
 
-    // Bind true SkinnedMesh hair, hat, and multi-bone trench coat directly to Male's skeleton
+    // Bind true SkinnedMesh hair, hat, and multi-bone matte wool trench coat directly to Male's skeleton
     if (!isSoldier && bodySkinnedMesh) {
       const parentArmature = bodySkinnedMesh.parent;
       const bindMat = bodySkinnedMesh.bindMatrix;
@@ -978,15 +989,18 @@ export class CharacterFactory {
 
       const outfitGeo = this._getOutfitSkinGeo(kind);
       if (outfitGeo) {
+        // Authentic 1930s matte woven wool / heavy gabardine cloth (zero clearcoat plastic shine!)
         coatMat = new THREE.MeshPhysicalMaterial({
           vertexColors: true,
-          roughness: 0.52,
-          metalness: 0.08,
-          clearcoat: 0.58,
-          clearcoatRoughness: 0.26,
-          sheen: 0.32,
-          sheenRoughness: 0.55,
-          sheenColor: new THREE.Color(0x6e88b4),
+          roughness: 0.94,
+          metalness: 0.0,
+          ior: 1.43,
+          reflectivity: 0.08,
+          envMapIntensity: 0.22,
+          clearcoat: 0.0,
+          sheen: 0.36,
+          sheenRoughness: 0.92,
+          sheenColor: new THREE.Color(0x4c4740),
           side: THREE.DoubleSide
         });
         coatMat.userData.own = true;
@@ -1000,11 +1014,13 @@ export class CharacterFactory {
               '#include <common>',
               `#include <common>
               uniform float uTime;
-              uniform vec3 uCoatSway;`
+              uniform vec3 uCoatSway;
+              varying vec3 vClothBindPos;`
             )
             .replace(
               '#include <begin_vertex>',
               `#include <begin_vertex>
+              vClothBindPos = position;
               if (transformed.y < 0.24) {
                 float skirtK = clamp((0.24 - transformed.y) / 0.58, 0.0, 1.0);
                 skirtK = skirtK * skirtK;
@@ -1016,15 +1032,47 @@ export class CharacterFactory {
                 transformed.xz += radD * (length(uCoatSway.xz) * 0.32 + 0.014) * skirtK;
               }`
             );
-          shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <emissivemap_fragment>',
-            `#include <emissivemap_fragment>
-            vec3 cRimV = normalize(vViewPosition);
-            float cRimN = 1.0 - clamp(abs(dot(normalize(normal), cRimV)), 0.0, 1.0);
-            totalEmissiveRadiance += ${isHero ? 'vec3(0.24, 0.36, 0.58)' : 'vec3(0.20, 0.25, 0.40)'} * pow(cRimN, 2.5);`
-          );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              '#include <common>',
+              `#include <common>
+              varying vec3 vClothBindPos;
+              float clothHash(vec2 p) {
+                p = fract(p * vec2(127.1, 311.7));
+                p += dot(p, p + 34.23);
+                return fract(p.x * p.y);
+              }
+              float clothWeavePattern(vec3 bp) {
+                float uWrap = atan(bp.x, bp.z) * 0.28 + (bp.x + bp.z) * 0.65;
+                float vWrap = bp.y;
+                float colStripe = floor(uWrap * 68.0);
+                float dir = mod(colStripe, 2.0) < 0.5 ? 1.0 : -1.0;
+                float twill = sin((uWrap * 185.0 + vWrap * 185.0 * dir) * 6.28318);
+                float crossWarp = sin((vWrap * 210.0 - uWrap * 42.0) * 6.28318);
+                float nap = clothHash(floor(vec2(uWrap, vWrap) * 320.0)) - 0.5;
+                return 0.5 + 0.24 * twill + 0.14 * crossWarp + 0.18 * nap;
+              }`
+            )
+            .replace(
+              '#include <color_fragment>',
+              `#include <color_fragment>
+              float cWeave = clothWeavePattern(vClothBindPos);
+              diffuseColor.rgb *= (0.86 + 0.26 * cWeave);`
+            )
+            .replace(
+              '#include <roughnessmap_fragment>',
+              `#include <roughnessmap_fragment>
+              roughnessFactor = clamp(0.91 + 0.07 * (1.0 - cWeave), 0.89, 0.99);`
+            )
+            .replace(
+              '#include <normal_fragment_maps>',
+              `#include <normal_fragment_maps>
+              float wNx = sin(vClothBindPos.x * 920.0 + vClothBindPos.y * 920.0) * 0.055;
+              float wNz = cos(vClothBindPos.z * 920.0 - vClothBindPos.y * 920.0) * 0.055;
+              normal = normalize(normal + vec3(wNx, (wNx - wNz) * 0.45, wNz));`
+            );
         };
-        coatMat.customProgramCacheKey = () => (isHero ? 'noir-coat-cloth-hero-v2' : 'noir-coat-cloth-foe-v2');
+        coatMat.customProgramCacheKey = () => (isHero ? 'noir-matte-wool-coat-hero' : 'noir-matte-wool-coat-foe');
         const outfitMesh = new THREE.SkinnedMesh(outfitGeo, coatMat);
         outfitMesh.castShadow = true;
         outfitMesh.frustumCulled = false;
@@ -1035,8 +1083,9 @@ export class CharacterFactory {
 
     const mixer = new THREE.AnimationMixer(inner);
     const acts = {};
-    const w = { Idle: 1, Walk: 0, Run: 0 };
+    const w = { RelaxIdle: 1, Idle: 0, Walk: 0, Run: 0 };
     for (const n in w) {
+      if (!clips[n]) continue;
       acts[n] = mixer.clipAction(clips[n]);
       acts[n].play();
       acts[n].setEffectiveWeight(w[n]);
@@ -1060,14 +1109,14 @@ export class CharacterFactory {
       this._buildManPropAccessories(kind, g, bones);
     }
 
-    // Precompute upper-body arm poses and weapon grip transforms from rest pose
+    // Precompute relaxed carry poses, combat ready poses, ADS poses & weapon grip transforms
     const rest = {};
     ARMS.forEach(n => { if (bones[n]) rest[n] = bones[n].quaternion.clone(); });
     const poses = {};
     const xf = {};
     const tmp = new THREE.Object3D();
 
-    for (const cls of ['knife', 'pistol', 'long', 'strike']) {
+    for (const cls of ['knife', 'carry_pistol', 'carry_long', 'hip_pistol', 'pistol', 'long', 'strike']) {
       ARMS.forEach(n => { if (bones[n]) bones[n].quaternion.copy(rest[n]); });
       const P4 = POSE[cls];
       if (P4) {
@@ -1079,9 +1128,15 @@ export class CharacterFactory {
         }
       }
       poses[cls] = {};
-      ARMS.forEach(n => { if (bones[n]) poses[cls][n] = bones[n].quaternion.clone(); });
+      const boneSubset =
+        cls === 'carry_pistol' || cls === 'strike'
+          ? ['RightShoulder', 'RightArm', 'RightForeArm', 'RightHand']
+          : ARMS;
+      boneSubset.forEach(n => {
+        if (bones[n]) poses[cls][n] = bones[n].quaternion.clone();
+      });
 
-      if (cls !== 'strike') {
+      if (cls === 'knife' || cls === 'pistol' || cls === 'long') {
         g.updateMatrixWorld(true);
         const h = bones.RightHand.getWorldPosition(new THREE.Vector3());
         const fd = h.clone().sub(bones.RightForeArm.getWorldPosition(new THREE.Vector3())).normalize();
@@ -1129,7 +1184,12 @@ export class CharacterFactory {
       poses,
       xf,
       pose: null,
+      carryPose: null,
+      hipPose: null,
+      aimPose: null,
       melee: false,
+      dead: false,
+      readySmoothed: 0,
       rate: 1,
       strike: 0
     };
@@ -1146,13 +1206,16 @@ export class CharacterFactory {
     u.gun.geometry = this.wf.getGeometry(k);
     u.melee = k === 'knife';
     u.pose = u.melee ? null : u.poses[cls];
+    u.carryPose = u.melee ? null : cls === 'pistol' ? u.poses.carry_pistol : u.poses.carry_long;
+    u.hipPose = u.melee ? null : cls === 'pistol' ? u.poses.hip_pistol : u.poses.long;
+    u.aimPose = u.melee ? null : u.poses[cls];
     u.gun.position.copy(x.p);
     u.gun.quaternion.copy(x.q);
     u.gun.scale.copy(x.s);
     u.glint.position.set((WEAPON_TIPS[k] || 0.34) + 0.03, 0.045, 0);
   }
 
-  poseMesh(m, x, z, ang, mode, dt, aimPitch = 0, flinch = 0) {
+  poseMesh(m, x, z, ang, mode, dt, aimPitch = 0, flinch = 0, gunReady = 1, ads = 0) {
     const u = m.userData;
     m.position.x = x;
     m.position.z = z;
@@ -1180,15 +1243,36 @@ export class CharacterFactory {
       sway.z += (-clamp(fwdVel * 0.026, -0.12, 0.22) - sway.z) * k;
     }
 
+    const rK = clamp(gunReady, 0, 1);
+    const blendRate = Math.min(1, dt * 9.5);
     for (const n in u.acts) {
-      u.w[n] += ((n === mode ? 1 : 0) - u.w[n]) * Math.min(1, dt * 9);
+      let targetW = 0;
+      if (mode === 'RelaxIdle') {
+        if (n === 'RelaxIdle') targetW = 1 - 0.26 * rK;
+        else if (n === 'Idle') targetW = 0.26 * rK;
+      } else if (n === mode) {
+        targetW = 1;
+      }
+      u.w[n] = (u.w[n] ?? 0) + (targetW - (u.w[n] ?? 0)) * blendRate;
       u.acts[n].setEffectiveWeight(u.w[n]);
     }
     u.mixer.update(dt * u.rate);
 
-    if (u.pose) {
+    if (!u.dead && !u.melee && u.aimPose) {
+      const locoBlend = mode === 'Walk' ? 0.74 : mode === 'Run' ? 0.62 : 0.90;
+      const adsK = clamp(ads, 0, 1);
       for (const n of ARMS) {
-        if (u.bones[n]) u.bones[n].quaternion.copy(u.pose[n]);
+        const b = u.bones[n];
+        if (!b) continue;
+        // 1. Relaxed low-carry pose (preserving natural walk/run arm swing!)
+        if (u.carryPose && u.carryPose[n]) {
+          b.quaternion.slerp(u.carryPose[n], locoBlend);
+        }
+        // 2. Smoothly raise into Gun-Ready / ADS pose when aiming, firing, or in combat stance
+        if (rK > 0.005) {
+          _q2.copy(u.hipPose[n] || u.aimPose[n]).slerp(u.aimPose[n], adsK);
+          b.quaternion.slerp(_q2, rK);
+        }
       }
     } else if (u.strike > 0) {
       const st = u.poses.strike;
@@ -1196,7 +1280,8 @@ export class CharacterFactory {
       u.bones.RightForeArm.quaternion.slerp(st.RightForeArm, u.strike);
     }
 
-    const pitchTilt = aimPitch + flinch * 0.35;
+    const pitchScale = 0.18 + 0.82 * rK;
+    const pitchTilt = aimPitch * pitchScale + flinch * 0.35;
     if (Math.abs(pitchTilt) > 0.005 && u.bones.Spine2) {
       m.updateMatrixWorld(true);
       const localPitchAxis = _v1.set(0, 0, 1).applyQuaternion(m.quaternion);
@@ -1209,8 +1294,11 @@ export class CharacterFactory {
 
   poseCorpse(m, dirSign = 1) {
     const u = m.userData;
+    u.dead = true;
     u.rate = 0;
     u.pose = null;
+    u.aimPose = null;
+    u.carryPose = null;
     u.strike = 0;
     u.glint.visible = false;
     u.gun.visible = false;
