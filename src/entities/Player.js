@@ -379,27 +379,36 @@ export class PlayerController {
 
     let fovTarget = baseFov * (1 - 0.28 * this.ads) - 4.5 * (this.btK || 0) + muzzle * 0.5;
 
-    // Cinema Two-Stage Close-Up & Telephoto Freeze-Frame Execution Camera (wall-safe!)
+    // Smooth Cylindrical Dolly Close-Up & Freeze-Frame Execution Camera (zero through-body cut, zero close-up shake jitter!)
     const ec = this.execCam;
     if (ec && ec.k > 0.005) {
-      const ek = clamp(ec.k, 0, 1);
-      const orbAng = ec.yaw + Math.PI + ec.side * (ec.orbOff ?? 1.02);
-      const orbR = ec.dist || 1.15;
+      const rawK = clamp(ec.k, 0, 1);
+      const ek = rawK * rawK * (3 - 2 * rawK); // C1 Hermite smoothstep
+      const orbAng = ec.yaw + Math.PI + ec.side * (ec.orbOff ?? 1.06);
+      const orbR = ec.dist || 1.66;
       const odx = Math.cos(orbAng);
       const odz = Math.sin(orbAng);
       const anchorY = this.camY + (ec.lookY || 1.38);
       let safeR = orbR;
-      const eHit = physics.castRay(ec.mx, anchorY, ec.mz, odx, -0.04, odz, orbR + 0.22, GROUP_WORLD, physics.playerCollider);
-      if (eHit) safeR = Math.max(0.62, eHit.dist - 0.24);
+      const eHit = physics.castRay(ec.mx, anchorY, ec.mz, odx, -0.04, odz, orbR + 0.24, GROUP_WORLD, physics.playerCollider);
+      if (eHit) safeR = Math.max(0.75, eHit.dist - 0.26);
 
-      const exX = ec.mx + odx * safeR;
-      const exY = Math.max(0.55, this.camY + (ec.camYOff ?? 1.34));
-      const exZ = ec.mz + odz * safeR;
+      // Cylindrical polar arc around (ec.mx, ec.mz) so camera orbits smoothly around hero instead of cutting through torso!
+      const stdDx = stdX - ec.mx;
+      const stdDz = stdZ - ec.mz;
+      const r0 = Math.max(0.5, Math.hypot(stdDx, stdDz));
+      const a0 = Math.atan2(stdDz, stdDx);
+      const da = ((orbAng - a0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const curAng = a0 + da * ek;
+      const curR = r0 + (safeR - r0) * ek;
+
+      const exY = Math.max(0.60, this.camY + (ec.camYOff ?? 1.38));
+      const camSk = sk * Math.max(0, 1 - ek * 0.94);
 
       camera.position.set(
-        stdX + (exX - stdX) * ek + rnd(-sk, sk),
-        stdY + (exY - stdY) * ek + rnd(-sk, sk),
-        stdZ + (exZ - stdZ) * ek + rnd(-sk, sk)
+        ec.mx + Math.cos(curAng) * curR + rnd(-camSk, camSk),
+        stdY + (exY - stdY) * ek + rnd(-camSk, camSk),
+        ec.mz + Math.sin(curAng) * curR + rnd(-camSk, camSk)
       );
       _tmpV.set(
         stdLookX + (ec.mx - stdLookX) * ek,
@@ -408,7 +417,7 @@ export class PlayerController {
       );
       camera.lookAt(_tmpV);
       if (ec.roll) camera.rotateZ(ec.roll * ek);
-      const targetExecFov = ec.fov || 36;
+      const targetExecFov = ec.fov || 38;
       fovTarget = fovTarget * (1 - ek) + targetExecFov * ek + (ec.fovKick || 0);
     } else {
       camera.position.set(stdX + rnd(-sk, sk), stdY + rnd(-sk, sk), stdZ + rnd(-sk, sk));

@@ -980,6 +980,11 @@ function spawnExecFinisherVfx3D(muzX, muzY, muzZ, hitX, hitY, hitZ, ndx, ndz, st
   }
 }
 
+const smooth01 = x => {
+  const u = clamp(x, 0, 1);
+  return u * u * (3 - 2 * u);
+};
+
 function findExecTarget() {
   let best = null;
   let bestKind = 'exec';
@@ -992,7 +997,7 @@ function findExecTarget() {
     const dx = e.x - P.x;
     const dz = e.z - P.z;
     const d = Math.hypot(dx, dz);
-    if (d > 6.0) continue;
+    if (d > 4.6) continue;
     const fwdDot = (dx * lookX + dz * lookZ) / (d || 1);
     if (d > 2.2 && fwdDot < -0.15) continue;
     if (!level.los(P.x, P.z, e.x, e.z)) continue;
@@ -1025,7 +1030,7 @@ function tryExecute() {
   if (state !== 'play' || P.execT > 0 || P.rollT > 0 || execSession) return;
   const e = findExecTarget();
   if (!e) {
-    say('贴近敌寇（6米内）按 [E] 猛袭处决 / 重托破防');
+    say('贴近敌寇（4.5米内）按 [E] 猛袭处决 / 重托破防');
     return;
   }
 
@@ -1037,47 +1042,47 @@ function tryExecute() {
 
   // Heavy Guard-Break Smash against un-staggered full-HP elite enemies -> immediately opens them up for [E] Finisher!
   if (execKind === 'smash') {
-    if (d > 1.05) {
-      const stepD = Math.min(d - 0.95, 2.2);
+    if (d > 1.15) {
+      const stepD = Math.min(d - 1.05, 1.6);
       const mv = physics.movePlayer(ndx * stepD, 0, ndz * stepD);
       P.x = mv.x;
       P.z = mv.z;
     }
     P.ang = Math.atan2(ndz, ndx);
-    P.execT = 0.34;
+    P.execT = 0.36;
     P.inv = 0.58;
-    hitstopT = 0.048;
-    execFX.flash = 0.45;
-    execFX.dash = 0.65;
-    shake = Math.max(shake, 0.44);
+    hitstopT = 0.042;
+    execFX.flash = 0.38;
+    execFX.dash = 0.45;
+    shake = Math.max(shake, 0.22);
     audio.sfx('execCrunch');
     audio.playVoiceShout('exec', 0.6);
-    spawnSlashArc3D(e.x - ndx * 0.25, P.y + 1.32, e.z - ndz * 0.25, P.ang, 0.28, 0xffc870, 0.85);
-    level.moveEnt(e, ndx * 0.95, ndz * 0.95);
+    spawnSlashArc3D(e.x - ndx * 0.25, P.y + 1.32, e.z - ndz * 0.25, P.ang, 0.24, 0xffc870, 0.82);
+    level.moveEnt(e, ndx * 0.85, ndz * 0.85);
     enemyMgr.hitEnemy(e, 26, ndx, ndz, e.ht * 0.78, makeLogicCtx(), false, 0);
     if (e.hp > 0) {
       e.staggerT = 2.6;
       e.finisherT = 6.5;
       e.stun = 1.6;
-      e.flinch = 2.0;
+      e.flinch = 1.4;
     }
     say('重托破防失衡！再按 [E] 贴脸特写绝杀！');
     return;
   }
 
-  // Full 3-Act Cinema Close-Up + Freeze-Frame Finisher!
+  // Smooth C1-Continuous Cinema Close-Up + Freeze-Frame Finisher!
   const stealth = !e.awake;
   const wKey = WEAPONS[P.gun]?.modelKey || 'pistol';
   const isLongGun = wKey !== 'pistol' && wKey !== 'browning' && wKey !== 'revolver' && wKey !== 'knife';
-  const standoffDist = stealth ? 0.86 : isLongGun ? 1.52 : 1.28;
-  const dur = stealth ? 0.68 : 0.76;
+  const standoffDist = stealth ? 0.88 : isLongGun ? 1.54 : 1.30;
+  const dur = stealth ? 0.70 : 0.78;
   const yaw = Math.atan2(ndz, ndx);
 
-  // Choose wall-free side (+1 or -1) for the 36°-FOV Telephoto Portrait Close-Up
+  // Choose wall-free side (+1 or -1) for the Cylindrical Dolly Portrait Close-Up
   const mx0 = (P.x + e.x) * 0.5;
   const mz0 = (P.z + e.z) * 0.5;
-  const rPlus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI + 1.15), 0, Math.sin(yaw + Math.PI + 1.15), 2.1, GROUP_WORLD, physics.playerCollider);
-  const rMinus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 1.15), 0, Math.sin(yaw + Math.PI - 1.15), 2.1, GROUP_WORLD, physics.playerCollider);
+  const rPlus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI + 1.12), 0, Math.sin(yaw + Math.PI + 1.12), 2.2, GROUP_WORLD, physics.playerCollider);
+  const rMinus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 1.12), 0, Math.sin(yaw + Math.PI - 1.12), 2.2, GROUP_WORLD, physics.playerCollider);
   const side = !rPlus ? 1 : !rMinus ? -1 : rPlus.dist >= rMinus.dist ? 1 : -1;
 
   e.executing = true;
@@ -1085,7 +1090,7 @@ function tryExecute() {
   P.ang = yaw;
   P.execT = dur;
   P.inv = dur + 0.85;
-  execFX.dash = 0.95;
+  execFX.dash = d > 1.8 ? 0.75 : 0.25;
   execFX.stealth = stealth;
   audio.sfx('execDash');
 
@@ -1097,6 +1102,7 @@ function tryExecute() {
     t: 0,
     dur,
     standoff: standoffDist,
+    remDist: Math.max(0, d - standoffDist),
     ndx,
     ndz,
     yaw,
@@ -1112,7 +1118,7 @@ function updateExecution(dt) {
   if (execFX.dash > 0) execFX.dash = Math.max(0, execFX.dash - dt * 4.5);
 
   if (!execSession) {
-    execFX.k = Math.max(0, execFX.k - dt * 6);
+    execFX.k = Math.max(0, execFX.k - dt * 5.5);
     if (execFX.k <= 0.005) {
       P.execCam = null;
       execFX.impactPos = null;
@@ -1124,56 +1130,57 @@ function updateExecution(dt) {
   const e = s.e;
   s.t += dt;
   const t = s.t;
-  const smashT = s.stealth ? 0.16 : 0.18;
-  const killT = s.stealth ? 0.34 : 0.38;
+  const smashT = 0.22;
+  const killT = s.stealth ? 0.38 : 0.42;
 
-  // Act 1: Ferocious 6m Predator Gap-Closing Dash across wet cobblestones
+  // Act 1: Controlled, Grounded Predator Stride to exact standoff distance
   if (e && e.hp > 0 && t < smashT) {
     const goalX = e.x - s.ndx * s.standoff;
     const goalZ = e.z - s.ndz * s.standoff;
     const remX = goalX - P.x;
     const remZ = goalZ - P.z;
     const remD = Math.hypot(remX, remZ);
-    if (remD > 0.03) {
-      const step = Math.min(remD, (remD / Math.max(0.03, smashT - t + 0.02)) * dt * 1.38);
+    s.remDist = remD;
+    if (remD > 0.025) {
+      const step = Math.min(remD, (remD / Math.max(0.035, smashT - t + 0.02)) * dt * 1.25);
       const mv = physics.movePlayer((remX / remD) * step, 0, (remZ / remD) * step);
       P.x = mv.x;
       P.z = mv.z;
-      if (Math.random() < 0.55) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 3.2, 0.22);
+      if (remD > 0.5 && Math.random() < 0.45) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 2.8, 0.20);
     }
     P.ang = s.yaw;
+  } else {
+    s.remDist = 0;
   }
 
-  // Act 2: Collar-Grab & Bone-Crushing Jaw/Throat Strike + 3D Swept Crescent Arc!
+  // Act 2: Compact, Weighty Collar-Check / Stock-Smash + 3D Swept Crescent Arc!
   if (!s.didSmash && t >= smashT) {
     s.didSmash = true;
     if (e && e.hp > 0) {
       e.ang = s.stealth ? s.yaw : Math.atan2(-s.ndz, -s.ndx);
-      const arcX = (P.x + e.x) * 0.5;
-      const arcZ = (P.z + e.z) * 0.5;
+      const arcX = P.x * 0.42 + e.x * 0.58;
+      const arcZ = P.z * 0.42 + e.z * 0.58;
       if (s.stealth) {
         audio.sfx('execCrunch');
-        hitstopT = 0.042;
-        execFX.flash = 0.32;
-        shake = Math.max(shake, 0.24);
-        e.flinch = 1.4;
-        spawnSlashArc3D(arcX, P.y + 1.38, arcZ, s.yaw, -0.18, 0xd8eeff, 0.78);
+        hitstopT = 0.038;
+        execFX.flash = 0.28;
+        e.flinch = 0.85;
+        spawnSlashArc3D(arcX, P.y + 1.38, arcZ, s.yaw, -0.16, 0xd8eeff, 0.72);
       } else {
         audio.sfx('execCrunch');
         audio.playVoiceShout('exec', 0.5);
         audio.playVoiceShout('grunt', 0.7);
-        hitstopT = 0.050;
-        execFX.flash = 0.45;
-        shake = Math.max(shake, 0.42);
-        e.flash = 0.12;
-        e.flinch = 2.3;
-        level.moveEnt(e, s.ndx * 0.16, s.ndz * 0.16);
-        spawnSlashArc3D(arcX, P.y + (s.style === 1 ? 0.92 : 1.42), arcZ, s.yaw, 0.24, 0xffb85c, 0.88);
+        hitstopT = 0.045;
+        execFX.flash = 0.38;
+        e.flash = 0.10;
+        e.flinch = 1.15;
+        level.moveEnt(e, s.ndx * 0.12, s.ndz * 0.12);
+        spawnSlashArc3D(arcX, P.y + 1.36, arcZ, s.yaw, 0.20, 0xffb85c, 0.80);
       }
     }
   }
 
-  // Act 3A: ENTER EXTREME TELEPHOTO CLOSE-UP + 0.46s STYLIZED NOIR FREEZE-FRAME TABLEAU!
+  // Act 3A: LOCK AIM & ENTER 0.58s STYLIZED NOIR FREEZE-FRAME TABLEAU!
   if (!s.didFreeze && t >= killT) {
     s.didFreeze = true;
     if (e && e.hp > 0) {
@@ -1185,35 +1192,34 @@ function updateExecution(dt) {
       s.ndx = ndx;
       s.ndz = ndz;
 
-      // Force hero into exact executioner pose so we read true 3D barrel-tip world position!
+      // Force hero into exact weapon-matched executioner pose so barrel-tip world position is millimeter-exact!
       if (playerMesh) {
         const pu = playerMesh.userData;
-        const aimPoseKey = s.style === 1 ? 'exec_aim_lo' : 'exec_aim_hi';
+        const aimPoseKey = s.stealth ? 'exec_stealth_slash' : s.isLongGun ? 'long' : 'exec_aim_pistol';
         pu.execPose = { a: aimPoseKey, b: aimPoseKey, t: 1, w: 1 };
-        pu.execTwist = 0.06;
-        cf.poseMesh(playerMesh, P.x, P.z, P.ang, 'RelaxIdle', 0, 0, 0, 0, 0);
+        pu.execTwist = 0.04;
+        cf.poseMesh(playerMesh, P.x, P.z, P.ang, 'RelaxIdle', 0.05, 0, 0, 0, 0);
         playerMesh.updateMatrixWorld(true);
         pu.glint.getWorldPosition(_execMuzV);
       } else {
         _execMuzV.set(P.x + ndx * 0.88, P.y + 1.42, P.z + ndz * 0.88);
       }
 
-      const hitY = P.y + (s.style === 1 ? 1.16 : 1.44);
-      const hitX = e.x - ndx * 0.06;
-      const hitZ = e.z - ndz * 0.06;
+      const hitY = P.y + 1.42;
+      const hitX = e.x - ndx * 0.05;
+      const hitZ = e.z - ndz * 0.05;
       execFX.impactPos = { x: (_execMuzV.x + hitX) * 0.5, y: (_execMuzV.y + hitY) * 0.5, z: (_execMuzV.z + hitZ) * 0.5 };
       execFX.stealth = s.stealth;
       execFX.stamp = s.stealth
         ? '无 声 抹 喉'
-        : ['一 枪 绝 杀', '碎 膝 伏 诛', '抵 颌 处 刑'][s.style] || '一 枪 绝 杀';
+        : ['一 枪 绝 杀', '雷 霆 伏 诛', '抵 颌 处 刑'][s.style] || '一 枪 绝 杀';
 
-      // Snap victim into dramatic freeze-frame recoil & pop hat mid-air!
-      e.flinch = 2.6;
+      e.flinch = 1.25;
       e.flash = 0;
       const eu = e.mesh?.userData;
       if (eu?.hatMesh && eu.hatMesh.visible) {
         eu.hatMesh.visible = false;
-        spawnFlyingHat(e.type, e.x + ndx * 0.12, (e.ht || 1.75) * 0.96 + 0.14, e.z + ndz * 0.12, ndx, ndz);
+        spawnFlyingHat(e.type, e.x + ndx * 0.12, (e.ht || 1.75) * 0.96 + 0.12, e.z + ndz * 0.12, ndx, ndz);
       }
 
       if (s.stealth) {
@@ -1225,21 +1231,21 @@ function updateExecution(dt) {
         const wGun = WEAPONS[P.gun];
         audio.sfx(wGun.snd);
         audio.sfx('execFreeze');
-        muzzle = 1.4;
-        const camSideAng = s.yaw + Math.PI + s.side * 1.18;
+        muzzle = 1.3;
+        const camSideAng = s.yaw + Math.PI + s.side * 1.14;
         gr.boomLight.position.set(
-          execFX.impactPos.x + Math.cos(camSideAng) * 0.75,
-          hitY + 0.32,
-          execFX.impactPos.z + Math.sin(camSideAng) * 0.75
+          execFX.impactPos.x + Math.cos(camSideAng) * 0.78,
+          hitY + 0.34,
+          execFX.impactPos.z + Math.sin(camSideAng) * 0.78
         );
         gr.boomLight.intensity = 14;
         spawnExecFinisherVfx3D(_execMuzV.x, _execMuzV.y, _execMuzV.z, hitX, hitY, hitZ, ndx, ndz, false);
         spawnCasing(
           _execMuzV.x - ndx * 0.22 - ndz * 0.14,
-          _execMuzV.y + 0.10,
+          _execMuzV.y + 0.08,
           _execMuzV.z - ndz * 0.22 + ndx * 0.14,
-          -ndz * 2.8,
-          ndx * 2.8
+          -ndz * 2.6,
+          ndx * 2.6
         );
         const lines = [
           '沈孤鸿：「这一枪，替上海滩收你的命！」',
@@ -1249,34 +1255,34 @@ function updateExecution(dt) {
         radio(lines[s.style % lines.length], 3.0);
       }
 
-      // Engage 620ms Dramatic Cinema Freeze-Frame Tableau!
-      freezeFrameT = 0.62;
+      // Engage 580ms Rock-Solid Cinema Freeze-Frame Tableau (zero camera shake!)
+      freezeFrameT = 0.58;
       execFX.freeze = 1.0;
-      execFX.flash = 0.88;
+      execFX.flash = 0.82;
     }
   }
 
-  // Act 3B: SHATTER FREEZE-FRAME -> Launch Victim Ragdoll 15.2m/s Across Wet Cobblestones!
+  // Act 3B: SHATTER FREEZE-FRAME -> Launch Victim Ragdoll Across Wet Cobblestones!
   if (s.didFreeze && !s.didKill && freezeFrameT <= 0) {
     s.didKill = true;
     audio.sfx('execRelease');
     if (!s.stealth) audio.sfx('execFinisher');
-    shake = Math.max(shake, s.stealth ? 0.32 : 0.88);
+    shake = Math.max(shake, s.stealth ? 0.18 : 0.48);
 
     if (e && e.hp > 0) {
       if (s.stealth) {
         e.awake = true;
-        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.86, makeLogicCtx(), true, 4.6);
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.86, makeLogicCtx(), true, 4.4);
         score += 180;
         killMark = 0.55;
         say('雨夜无声抹喉！生命+22 · 专注+35');
       } else {
-        spawnExecShockRing(e.x, 0.10, e.z, 0xffc870, 4.0);
-        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.90, makeLogicCtx(), true, 15.2);
+        spawnExecShockRing(e.x, 0.10, e.z, 0xffc870, 3.8);
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.90, makeLogicCtx(), true, 14.8);
         for (const o of level.enemies) {
           if (o.hp > 0 && Math.hypot(o.x - P.x, o.z - P.z) < 8.8) {
             o.stun = Math.max(o.stun || 0, 1.25);
-            o.flinch = 1.4;
+            o.flinch = 1.1;
           }
         }
         const wGun = WEAPONS[P.gun];
@@ -1293,22 +1299,22 @@ function updateExecution(dt) {
     }
   }
 
-  // Two-Stage Cinema Camera: Tight Grapple (1.36m, 41° FOV) -> Extreme Telephoto Freeze-Frame Close-Up (1.02m, 34° FOV)!
-  const camIn = clamp(t / 0.14, 0, 1);
-  const camOut = clamp((s.dur - t) / 0.24, 0, 1);
+  // 100% Continuous Cylindrical Camera Curve (ZERO step jumps!)
+  const camIn = smooth01(t / 0.24);
+  const camOut = smooth01((s.dur - t) / 0.28);
   const camK = Math.min(camIn, camOut);
   execFX.k = camK;
 
-  const inCloseup = t >= killT - 0.04;
+  const cu = smooth01((t - 0.14) / 0.24);
   const anchorX = e && e.hp > 0
     ? P.x * 0.54 + e.x * 0.46
-    : P.x + s.ndx * 0.58;
+    : P.x + s.ndx * 0.60;
   const anchorZ = e && e.hp > 0
     ? P.z * 0.54 + e.z * 0.46
-    : P.z + s.ndz * 0.58;
+    : P.z + s.ndz * 0.60;
 
-  const fovKick = s.didKill ? Math.max(0, 1 - (t - killT) / 0.22) * 7.5 : 0;
-  const roll = inCloseup ? -0.048 * s.side : s.didSmash ? -0.03 * s.side : 0;
+  const baseDist = s.isLongGun ? 1.88 : 1.66;
+  const fovKick = s.didKill ? smooth01(1 - (t - killT) / 0.22) * 5.0 : 0;
 
   P.execCam = {
     k: camK,
@@ -1316,13 +1322,13 @@ function updateExecution(dt) {
     mz: anchorZ,
     yaw: s.yaw,
     side: s.side,
-    orbOff: inCloseup ? 1.22 : 0.92,
-    dist: inCloseup ? (s.isLongGun ? 1.88 : 1.66) + 0.14 * (execFX.freeze || 0) : 1.64,
-    camYOff: inCloseup ? (s.style === 1 ? 1.24 : 1.44) : 1.22,
-    lookY: inCloseup ? (s.style === 1 ? 1.20 : 1.42) : 1.32,
-    fov: inCloseup ? 36 : 42,
+    orbOff: 0.76 + 0.38 * cu,
+    dist: baseDist + 0.12 * (1 - cu) + 0.10 * (execFX.freeze || 0),
+    camYOff: 1.28 + 0.14 * cu,
+    lookY: 1.32 + 0.10 * cu,
+    fov: 43 - 6.5 * cu,
     fovKick,
-    roll
+    roll: -0.036 * s.side * cu
   };
 
   if (t >= s.dur && freezeFrameT <= 0) {
@@ -2181,46 +2187,56 @@ function syncScene(dt) {
     const walking = P.moving && !P.sprinting && !rolling;
     const pu = playerMesh.userData;
 
-    // Choreographed 3-Act God-of-War Execution upper-body & torso torque
+    // C1-Continuous Weapon-Matched Execution Keyframe Curves (ZERO 1-frame snaps, ZERO pivot kicks!)
     if (execSession) {
       const s = execSession;
       const t = s.t;
-      const smashT = s.stealth ? 0.16 : 0.18;
-      const killT = s.stealth ? 0.34 : 0.38;
-      const aimTarget = s.style === 1 ? 'exec_aim_lo' : 'exec_aim_hi';
-      if (t < smashT) {
-        pu.execPose = { a: 'exec_windup', b: 'exec_windup', t: 0, w: clamp(t / 0.1, 0, 1) };
-        pu.execTwist = 0.42 * Math.sin((t / smashT) * Math.PI * 0.5);
+      const smashT = 0.22;
+      const killT = s.stealth ? 0.38 : 0.42;
+      const pGrab = s.isLongGun ? 'exec_long_coil' : 'exec_grab';
+      const pSmash = s.stealth ? 'exec_stealth_slash' : s.isLongGun ? 'exec_long_bash' : 'exec_whip';
+      const pAim = s.stealth ? 'exec_stealth_slash' : s.isLongGun ? 'long' : 'exec_aim_pistol';
+
+      if (t < 0.12) {
+        const k1 = smooth01(t / 0.12);
+        pu.execPose = { a: pGrab, b: pGrab, t: 0, w: k1 };
+        pu.execTwist = 0.15 * k1;
+      } else if (t < smashT) {
+        const k2 = smooth01((t - 0.12) / (smashT - 0.12));
+        pu.execPose = { a: pGrab, b: pSmash, t: k2, w: 1 };
+        pu.execTwist = 0.15 + (-0.18 - 0.15) * k2;
       } else if (t < killT) {
-        const k2 = clamp((t - smashT) / (killT - smashT), 0, 1);
-        pu.execPose = { a: 'exec_smash', b: aimTarget, t: Math.pow(k2, 1.4), w: 1 };
-        pu.execTwist = -0.46 * (1 - k2);
+        const k3 = smooth01((t - smashT) / (killT - smashT));
+        pu.execPose = { a: pSmash, b: pAim, t: k3, w: 1 };
+        pu.execTwist = -0.18 + (0.04 - -0.18) * k3;
       } else {
-        const k3 = clamp((t - killT) / Math.max(0.1, s.dur - killT), 0, 1);
-        pu.execPose = { a: aimTarget, b: aimTarget, t: 1, w: 1 - Math.pow(k3, 2.2) };
-        pu.execTwist = 0.12 * (1 - k3);
+        const k4 = smooth01((t - (killT + 0.06)) / Math.max(0.12, s.dur - killT - 0.06));
+        pu.execPose = { a: pAim, b: pAim, t: 1, w: 1 - k4 };
+        pu.execTwist = 0.04 * (1 - k4);
       }
     } else if (execing) {
-      // Heavy Guard-Break Smash pose
-      const smashK = Math.sin((1 - P.execT / 0.34) * Math.PI);
-      pu.execPose = { a: 'exec_windup', b: 'exec_smash', t: clamp(1 - P.execT / 0.18, 0, 1), w: smashK };
-      pu.execTwist = -0.38 * smashK;
+      // Smooth Guard-Break Smash curve
+      const prog = 1 - P.execT / 0.36;
+      const wCurve = Math.sin(clamp(prog, 0, 1) * Math.PI);
+      const sCurve = smooth01(prog / 0.48);
+      pu.execPose = { a: 'exec_grab', b: 'exec_whip', t: sCurve, w: wCurve };
+      pu.execTwist = (0.14 - 0.30 * sCurve) * wCurve;
     } else {
       pu.execPose = null;
       pu.execTwist = 0;
     }
 
-    const dashingExec = !!(execSession && execSession.t < (execSession.stealth ? 0.16 : 0.18));
-    pu.rate = rolling ? 1.6 : diving ? 0.45 : dashingExec ? 1.65 : execing ? 1.15 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
+    const dashingExec = !!(execSession && execSession.t < 0.18 && (execSession.remDist || 0) > 0.22);
+    pu.rate = rolling ? 1.6 : diving ? 0.45 : dashingExec ? 1.25 : execing ? 1.0 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
     pu.strike = 0;
     const mode =
       state === 'play' && (P.moving || rolling || P.air || dashingExec) && !diving
-        ? rolling || P.sprinting || dashingExec
+        ? rolling || P.sprinting
           ? 'Run'
           : 'Walk'
         : 'RelaxIdle';
     const aimElev = state === 'play' && !rolling && !execSession ? -(P.pitch - P.recoil) * 0.65 : 0;
-    const readyW = diving ? 1 : rolling || execing ? 0 : P.gunReady;
+    const readyW = diving ? 1 : rolling || execSession ? 0 : execing ? 0.5 : P.gunReady;
 
     cf.poseMesh(playerMesh, P.x, P.z, rolling ? Math.atan2(P.rdz, P.rdx) : P.ang, mode, dt, aimElev, 0, readyW, P.ads);
     playerMesh.position.y = P.y;
@@ -2238,12 +2254,6 @@ function syncScene(dt) {
       pu.pivot.rotation.x = localRight * 0.95 * diveEase;
       pu.pivot.rotation.z = -localFwd * 0.95 * diveEase;
       pu.pivot.position.y = 0.9 + diveEase * 0.34;
-      pu.pivot.scale.setScalar(1);
-    } else if (execing) {
-      const lungeLean = dashingExec ? 0.22 : execSession?.didKill ? -0.08 : 0.10;
-      pu.pivot.rotation.x = 0;
-      pu.pivot.rotation.z = -lungeLean;
-      pu.pivot.position.y = 0.9;
       pu.pivot.scale.setScalar(1);
     } else {
       pu.pivot.rotation.x = 0;
@@ -2301,24 +2311,24 @@ function syncScene(dt) {
     const u = m.userData;
     if (e.executing && execSession && execSession.e === e) {
       const st = execSession.t;
-      const smT = execSession.stealth ? 0.18 : 0.21;
-      u.execPose = st >= smT ? { a: 'exec_victim_reel', b: 'exec_victim_reel', t: 1, w: clamp((st - smT) / 0.08, 0, 1) } : null;
-      u.execTwist = st >= smT ? 0.55 * Math.sin(((st - smT) / 0.3) * Math.PI) : 0;
+      const smT = 0.22;
+      const stagW = st >= smT ? smooth01((st - smT) / 0.10) : 0;
+      u.execPose = stagW > 0 ? { a: 'exec_victim_stagger', b: 'exec_victim_stagger', t: 1, w: stagW } : null;
+      u.execTwist = st >= smT ? -0.24 * stagW * Math.exp(-Math.max(0, st - smT) * 3.5) : 0;
     } else {
       u.execPose = null;
       u.execTwist = 0;
     }
     u.rate = e.awake ? clamp(e.spd / 5.6, 0.72, 1.25) : 0.95;
     u.strike = u.melee ? clamp((e.cd - 0.45) / 0.3, 0, 1) : 0;
-    const eMode = !e.awake ? 'RelaxIdle' : e.moving ? (e.spd < 3.1 ? 'Walk' : 'Run') : 'Idle';
+    const eMode = e.executing || !e.awake ? 'RelaxIdle' : e.moving ? (e.spd < 3.1 ? 'Walk' : 'Run') : 'Idle';
     const eReady = e.executing ? 0 : e.awake && (e.staggerT || 0) <= 0 ? 1 : 0.08;
     const eAds = e.aimT > 0 || e.burst > 0 ? 1 : 0.35;
-    cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, e.flinch || 0, eReady, eAds);
+    cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, e.executing ? Math.min(0.65, e.flinch || 0) : (e.flinch || 0), eReady, eAds);
     u.mat.emissive.setHex(e.flash > 0 ? 0xaa3020 : 0);
     if (u.coatMat) u.coatMat.emissive.setHex(e.flash > 0 ? 0x551810 : 0);
     u.glint.visible = !e.executing && (e.aimT > 0 || e.burst > 0 || e.callT > 0);
-    const kneelK = e.executing && execSession?.style === 1 && execSession?.didSmash ? 0.34 : 0;
-    u.dk += ((Math.max(e.duck ? 1 : 0, kneelK)) - u.dk) * Math.min(1, dt * 11);
+    u.dk += ((e.duck && !e.executing ? 1 : 0) - u.dk) * Math.min(1, dt * 11);
     m.scale.y = m.scale.x * (1 - 0.4 * u.dk);
   }
 
@@ -2547,20 +2557,19 @@ function frame(ts) {
   let effDt = dt;
   if (freezeFrameT > 0 && state === 'play') {
     freezeFrameT = Math.max(0, freezeFrameT - dt);
-    execFX.freeze = clamp(freezeFrameT / 0.62, 0, 1);
-    execFX.flash = Math.max(0, execFX.flash - dt * 3.2);
+    execFX.freeze = clamp(freezeFrameT / 0.58, 0, 1);
+    execFX.flash = Math.max(0, execFX.flash - dt * 3.4);
     if (P.execCam) {
       const baseD = execSession?.isLongGun ? 1.88 : 1.66;
-      P.execCam.dist = baseD + 0.14 * execFX.freeze;
+      P.execCam.dist = baseD + 0.09 * execFX.freeze;
     }
-    shake = Math.max(shake, 0.06 * execFX.freeze);
     effDt = 0;
   } else {
     execFX.freeze = 0;
     if (hitstopT > 0 && state === 'play') {
       hitstopT = Math.max(0, hitstopT - dt);
       effDt = dt * 0.025;
-      shake = Math.max(shake, 0.28);
+      if (!execSession) shake = Math.max(shake, 0.24);
     }
   }
 
