@@ -26,7 +26,7 @@ export const LEVELS = [
   {
     name: '第一关 · 闸北石库门里弄',
     h: 82,
-    groups: 13,
+    groups: 6,
     mix: { thug: 5, gunman: 3 },
     style: 'cobble',
     ground: 'cobblestone_05',
@@ -40,7 +40,7 @@ export const LEVELS = [
   {
     name: '第二关 · 十六铺外滩码头',
     h: 92,
-    groups: 15,
+    groups: 7,
     mix: { thug: 3, gunman: 3, soldier: 3 },
     style: 'plank',
     ground: 'worn_planks',
@@ -55,7 +55,7 @@ export const LEVELS = [
   {
     name: '第三关 · 苏州河大货栈',
     h: 80,
-    groups: 14,
+    groups: 6,
     mix: { thug: 3, gunman: 2, soldier: 3, gunner: 3 },
     style: 'concrete',
     ground: 'concrete_floor_worn_001',
@@ -75,7 +75,7 @@ export const ENEMY_TYPES = {
   soldier: { hp: 55,  sp: 3.88, r: 0.56, score: 150,  pref: 18.75, gun: 0.9 },
   gunner:  { hp: 85,  sp: 3.44, r: 0.62, score: 200,  pref: 15.0, gun: 0.65 },
   officer: { hp: 60,  sp: 4.12, r: 0.56, score: 300,  pref: 16.25 },
-  boss:    { hp: 750, sp: 3.62, r: 0.88, score: 2000, pref: 13.1, gun: 0.65, scale: 1.45 }
+  boss:    { hp: 420, sp: 3.62, r: 0.88, score: 2000, pref: 13.1, gun: 0.65, scale: 1.45 }
 };
 
 export const CHAR_STYLES = {
@@ -90,10 +90,14 @@ export const CHAR_STYLES = {
 };
 
 export const WEAPONS = [
-  { name: '驳壳枪', fullName: '毛瑟 C96 驳壳枪',   kick: 0.022, bloom: 0.35, mag: 8,  rate: 0.26,  dmg: 18, spread: 0.012, speed: 380, reload: 0.9,  pellets: 1, snd: 'pistol',  len: 0.32 },
-  { name: '冲锋枪', fullName: '汤姆逊 M1928 冲锋枪', kick: 0.011, bloom: 0.15, mag: 30, rate: 0.085, dmg: 12, spread: 0.028, speed: 290, reload: 1.5,  pellets: 1, snd: 'smg',     len: 0.65 },
-  { name: '霰弹枪', fullName: '温彻斯特 M1897',     kick: 0.05,  bloom: 0.6,  mag: 6,  rate: 0.8,   dmg: 9,  spread: 0.085, speed: 380, reload: 1.7,  pellets: 8, snd: 'shotgun', len: 0.8 },
-  { name: '步枪',   fullName: '中正式步枪',         kick: 0.06,  bloom: 0.9,  mag: 5,  rate: 1.25,  dmg: 95, spread: 0.004, speed: 760, reload: 2.4,  pellets: 1, snd: 'rifle',   len: 0.95 }
+  { id: 'c96',      name: '驳壳枪', fullName: '毛瑟 C96 二十响驳壳枪', modelKey: 'pistol',   snd: 'pistol',   caliber: '7.63×25mm 毛瑟弹',   desc: '经典全钢盒子炮，射速轻快、备弹无限',             kick: 0.020, bloom: 0.28, mag: 10, initRes: Infinity, rate: 0.21,  dmg: 21, spread: 0.010, speed: 410, reload: 1.0,  pellets: 1, push: 2.2, len: 0.34 },
+  { id: 'browning', name: '勃朗宁', fullName: '勃朗宁 M1911 手枪',     modelKey: 'browning', snd: 'browning', caliber: '.45 ACP 大口径手枪弹', desc: '美式大口径半自动手枪，近战重创、备弹无限',       kick: 0.028, bloom: 0.34, mag: 7,  initRes: Infinity, rate: 0.29,  dmg: 32, spread: 0.008, speed: 370, reload: 0.95, pellets: 1, push: 3.5, len: 0.30 },
+  { id: 'revolver', name: '左轮枪', fullName: '史密斯威森 M1917 左轮', modelKey: 'revolver', snd: 'revolver', caliber: '.45 巡捕房转轮重弹',  desc: '公共租界探长配枪，极高精度与爆头致死率',         kick: 0.042, bloom: 0.44, mag: 6,  initRes: 36,       rate: 0.42,  dmg: 48, spread: 0.005, speed: 430, reload: 1.6,  pellets: 1, push: 5.0, len: 0.33 },
+  { id: 'mp18',     name: '花机关', fullName: '伯格曼 MP18 冲锋枪',    modelKey: 'mp18',     snd: 'mp18',     caliber: '9×19mm 横插弹鼓',     desc: '三十年代沪上最经典横插弹匣冲锋枪，连射极稳',     kick: 0.010, bloom: 0.13, mag: 32, initRes: 96,       rate: 0.105, dmg: 15, spread: 0.020, speed: 330, reload: 1.4,  pellets: 1, push: 1.8, len: 0.62 },
+  { id: 'thompson', name: '汤姆逊', fullName: '汤姆逊 M1928 冲锋枪',   modelKey: 'smg',      snd: 'smg',      caliber: '.45 ACP 50发弹鼓',    desc: '五十发圆盘大弹鼓，近距倾泻密集弹雨',             kick: 0.012, bloom: 0.16, mag: 50, initRes: 100,      rate: 0.080, dmg: 13, spread: 0.027, speed: 310, reload: 1.75, pellets: 1, push: 2.2, len: 0.65 },
+  { id: 'shotgun',  name: '霰弹枪', fullName: '温彻斯特 M1897 战壕枪', modelKey: 'shotgun',  snd: 'shotgun',  caliber: '12号 鹿弹（8颗弹丸）', desc: '泵动战壕霰弹枪，近身一枪轰飞敌寇与掩体',         kick: 0.052, bloom: 0.55, mag: 6,  initRes: 24,       rate: 0.78,  dmg: 10, spread: 0.076, speed: 380, reload: 1.7,  pellets: 8, push: 7.5, len: 0.84 },
+  { id: 'rifle',    name: '中正式', fullName: '中正式 7.92mm 步枪',    modelKey: 'rifle',    snd: 'rifle',    caliber: '7.92×57mm 毛瑟尖弹',  desc: '高精度栓动步枪，远距点名一枪毙命',               kick: 0.058, bloom: 0.78, mag: 5,  initRes: 25,       rate: 1.15,  dmg: 98, spread: 0.003, speed: 780, reload: 2.15, pellets: 1, push: 8.5, len: 0.94 },
+  { id: 'zb26',     name: '捷克式', fullName: '捷克式 ZB-26 轻机枪',   modelKey: 'zb26',     snd: 'zb26',     caliber: '7.92×57mm 20发顶置弹匣', desc: '淞沪会战传奇主力轻机枪，重火力撕裂防线',       kick: 0.022, bloom: 0.22, mag: 20, initRes: 60,       rate: 0.135, dmg: 29, spread: 0.014, speed: 640, reload: 1.95, pellets: 1, push: 5.5, len: 0.92 }
 ];
 
 export const WALL_TILE_SIZE = {

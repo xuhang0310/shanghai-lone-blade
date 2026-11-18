@@ -46,8 +46,37 @@ button{font-family:var(--body);font-weight:700;color:inherit}
 .go{background:var(--blood);color:#fff;border:0;padding:14px 20px;font-size:17px;letter-spacing:.2em;cursor:pointer}
 .go:hover{filter:brightness(1.15)}
 .go:disabled{background:var(--line);cursor:default;filter:none}
+.btn-sec{background:#1b2232;color:var(--lantern);border:1px solid rgba(217,164,65,.45);padding:10px 16px;font-size:14px;letter-spacing:.12em;cursor:pointer}
+.btn-sec:hover{background:#232c40;border-color:var(--lantern)}
 .panel .credit{font-size:11px;line-height:1.6;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
-.go:focus-visible,.tb:focus-visible{outline:2px solid var(--lantern);outline-offset:3px}
+.go:focus-visible,.tb:focus-visible,.btn-sec:focus-visible{outline:2px solid var(--lantern);outline-offset:3px}
+#armory{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(5,8,14,.84);overflow-y:auto}
+.armory-panel{width:min(100%,940px);background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lantern);padding:20px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 28px 70px rgba(0,0,0,.78);margin:auto}
+.armory-hdr{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px}
+.armory-hdr h2{margin:0;font-family:var(--display);font-weight:400;font-size:32px;color:var(--lantern);letter-spacing:.06em}
+.armory-sub{font-size:12px;color:var(--dim)}
+.slot-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.slot-card{background:#0d1320;border:1px solid #2b3346;padding:8px 10px;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left}
+.slot-card.active-slot{border-color:var(--lantern);background:#151d2e}
+.slot-num{font-weight:700;font-size:14px;color:var(--lantern);min-width:26px}
+.slot-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.slot-info b{font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-info span{font-size:11px;color:var(--dim)}
+.gun-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:10px}
+.gun-card{background:#101522;border:1px solid #2b3242;padding:10px;display:flex;flex-direction:column;gap:6px;cursor:pointer;text-align:left;transition:border-color .15s,background .15s}
+.gun-card:hover{border-color:#687490;background:#151b2b}
+.gun-card.equipped{border-color:var(--lantern);background:#192030;box-shadow:inset 0 0 0 1px rgba(217,164,65,.3)}
+.gun-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.gun-top b{font-size:14px;color:var(--ink)}
+.gun-badge{font-size:10px;padding:2px 6px;background:rgba(217,164,65,.18);color:var(--lantern);border:1px solid rgba(217,164,65,.45)}
+.gun-prev{width:100%;height:94px;object-fit:contain;background:#0c121e;border:1px solid #222938}
+.gun-cal{font-size:11px;color:var(--lantern)}
+.gun-desc{font-size:11px;color:var(--dim);line-height:1.4;min-height:30px}
+.stat-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;align-items:center;font-size:10px;color:var(--dim)}
+.stat-bar{height:5px;background:#1d2434;overflow:hidden}
+.stat-bar i{display:block;height:100%;background:linear-gradient(90deg,#b3261e,#d9a441)}
+.armory-ftr{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--line);padding-top:10px}
+@media(max-width:640px){.slot-bar{grid-template-columns:1fr}}
 #touch{position:fixed;inset:0;pointer-events:none}
 .tb{position:absolute;pointer-events:auto;width:60px;height:60px;border-radius:50%;border:2px solid rgba(236,227,207,.45);
   background:rgba(20,24,36,.55);color:var(--ink);font-size:14px;touch-action:none}
@@ -58,6 +87,8 @@ button{font-family:var(--body);font-weight:700;color:inherit}
 #bRoll{right:calc(118px + env(safe-area-inset-right,0px));bottom:calc(48px + env(safe-area-inset-bottom,0px))}
 #bNade{right:calc(112px + env(safe-area-inset-right,0px));bottom:calc(122px + env(safe-area-inset-bottom,0px))}
 #bGun{right:calc(34px + env(safe-area-inset-right,0px));bottom:calc(168px + env(safe-area-inset-bottom,0px))}
+#bExec{right:calc(112px + env(safe-area-inset-right,0px));bottom:calc(194px + env(safe-area-inset-bottom,0px));border-color:rgba(217,164,65,.7)}
+#bArmory{left:calc(12px + env(safe-area-inset-left,0px));top:calc(62px + env(safe-area-inset-top,0px));width:48px;height:48px;font-size:12px}
 #bPause{right:calc(12px + env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));width:44px;height:44px;font-size:12px}
 </style>
 </head>
@@ -70,8 +101,11 @@ button{font-family:var(--body);font-weight:700;color:inherit}
   <button class="tb" id="bNade" type="button">手雷</button>
   <button class="tb" id="bRoll" type="button">翻滚</button>
   <button class="tb" id="bJump" type="button">跳</button>
+  <button class="tb" id="bExec" type="button">处决</button>
+  <button class="tb" id="bArmory" type="button">军械</button>
   <button class="tb" id="bPause" type="button">暂停</button>
 </div>
+<div id="armory" hidden></div>
 <div id="ui"></div>
 <script type="module" src="/src/main.js"></script>
 </body>

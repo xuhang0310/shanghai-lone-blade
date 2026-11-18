@@ -466,7 +466,7 @@ export class LevelState {
       if (this.T(x, z) !== 0 || !reach[z * MW + x]) continue;
       const band = Math.floor((placed / this.cfg.groups) * (MH - 17 - z0)) + z0;
       if (Math.abs(z - band) > 8) continue;
-      const n = R(2, 4);
+      const n = R(2, 3);
       for (let j = 0; j < n; j++) {
         const ex = x + R(-1, 1);
         const ez = z + R(-1, 1);
@@ -484,8 +484,8 @@ export class LevelState {
 
     if (this.cfg.boss) {
       this.boss = this.spawnEnemy('boss', this.exitPos.x, 7 * TILE, 99);
-      for (let j = 0; j < 4; j++) {
-        this.spawnEnemy(j % 2 ? 'gunner' : 'soldier', this.exitPos.x + (j - 1.5) * 6.8, 11 * TILE, 99);
+      for (let j = 0; j < 3; j++) {
+        this.spawnEnemy(j % 2 ? 'gunner' : 'soldier', this.exitPos.x + (j - 1) * 6.8, 11 * TILE, 99);
       }
     }
 

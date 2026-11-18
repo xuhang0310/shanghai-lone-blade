@@ -14,7 +14,7 @@ import {
 import { AudioManager } from './core/AudioManager.js';
 import { InputManager } from './core/InputManager.js';
 import { AssetManager } from './core/AssetManager.js';
-import { GameRenderer } from './core/Renderer.js';
+import { GameRenderer, createFuelPoolMaterial } from './core/Renderer.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { LevelState } from './world/LevelGenerator.js';
 import { ArchitectureBuilder } from './world/ArchitectureBuilder.js';
@@ -31,6 +31,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const glCv = document.getElementById('gl');
 const hudCv = document.getElementById('hud');
 const ui = document.getElementById('ui');
+const armoryEl = document.getElementById('armory');
 const touchUI = document.getElementById('touch');
 
 const audio = new AudioManager();
@@ -71,9 +72,17 @@ let msg = '';
 let msgT = 0;
 let radioMsg = '';
 let radioT = 0;
+let dialogueQueue = [];
 let lightningT = 6.5;
 let lightningFlash = 0;
 let steamSprites = [];
+let blastClouds = [];
+let shockwaves = [];
+let prevArmoryState = 'menu';
+let armorySlot = 0;
+let bossConfronted = false;
+let reloadSpeakCd = 0;
+let execTarget = null;
 let shake = 0;
 let hurtFlash = 0;
 let hurtAng = null;
@@ -112,6 +121,15 @@ function say(t) {
 function radio(t, dur = 4.2) {
   radioMsg = t;
   radioT = dur;
+}
+
+function queueDialogue(lines) {
+  if (!lines?.length) return;
+  dialogueQueue.push(...lines);
+  if (radioT <= 0) {
+    const next = dialogueQueue.shift();
+    if (next) radio(next[0], next[1]);
+  }
 }
 
 function saveBest() {
@@ -248,26 +266,83 @@ function damageTile(tx, tz, dmg, dirX = 0, dirY = 0.5, dirZ = 0) {
 
 function explode(x, z, rad, dmg, foe = false) {
   audio.sfx('boom');
-  shake = Math.max(shake, 1.0);
-  puff(x, 0.6, z, 36, '#ffb84a', 15.0, 0.6);
-  puff(x, 1.0, z, 18, '#555555', 6.5, 1.0);
-  decal(x, z, rad * 0.5, true);
+  shake = Math.max(shake, 0.9);
+  puff(x, 0.7, z, 42, '#ffd670', 16.5, 0.65);
+  puff(x, 1.1, z, 26, '#ff6820', 11.0, 0.75);
+  decal(x, z, rad * 0.55, true);
 
-  const rm = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0xffb050).multiplyScalar(1.6),
+  // Layer 1: Ground expanding shockwave ring
+  const swm = new THREE.MeshBasicMaterial({
+    color: 0xffc878,
     transparent: true,
-    opacity: 0.65,
-    blending: THREE.AdditiveBlending,
+    opacity: 0.75,
     depthWrite: false,
-    toneMapped: false
+    side: THREE.DoubleSide
   });
-  const m = new THREE.Mesh(gr.G.sph, rm);
-  m.position.set(x, 1.0, z);
-  gr.scene.add(m);
-  rings.push({ t: 0, max: rad, mesh: m, dead: false });
+  const sw = new THREE.Mesh(gr.G.shockRing, swm);
+  sw.position.set(x, 0.08, z);
+  gr.scene.add(sw);
+  shockwaves.push({ t: 0, dur: 0.34, max: rad * 1.45, mesh: sw, dead: false });
+
+  // Layer 2: Volumetric fireball -> dark billowing smoke sprites
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU + rnd(-0.3, 0.3);
+    const spR = i < 2 ? rnd(0, 0.4) : rnd(0.5, rad * 0.38);
+    const mat = gr.M.smokeCloud.clone();
+    mat.color.setHex(0xfff0b8);
+    mat.opacity = 0.95;
+    const sp = new THREE.Sprite(mat);
+    const sx = x + Math.cos(a) * spR;
+    const sz = z + Math.sin(a) * spR;
+    const sy = 0.45 + rnd(0, 0.6);
+    sp.position.set(sx, sy, sz);
+    const baseScale = i < 2 ? 1.5 : 1.1;
+    sp.scale.setScalar(baseScale);
+    gr.scene.add(sp);
+    blastClouds.push({
+      mesh: sp,
+      t: -i * 0.02,
+      dur: rnd(1.05, 1.45),
+      vx: Math.cos(a) * rnd(0.5, 2.1),
+      vy: rnd(2.2, 3.6),
+      vz: Math.sin(a) * rnd(0.5, 2.1),
+      s0: baseScale,
+      s1: rnd(3.4, 4.9),
+      dead: false
+    });
+  }
+
+  // Layer 3: Physical spinning charred shrapnel chunks
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(gr.G.box, gr.M.dark);
+    const hx = rnd(0.12, 0.22);
+    const hy = rnd(0.05, 0.1);
+    const hz = rnd(0.14, 0.24);
+    m.scale.set(hx * 2, hy * 2, hz * 2);
+    m.castShadow = true;
+    worldGroup.add(m);
+    const a = rnd(0, TAU);
+    const spd = rnd(4.5, 10.5);
+    physics.spawnDynamicDebris(
+      m,
+      x + Math.cos(a) * 0.4,
+      0.7 + rnd(0, 0.5),
+      z + Math.sin(a) * 0.4,
+      hx,
+      hy,
+      hz,
+      Math.cos(a) * spd,
+      rnd(4.5, 9.0),
+      Math.sin(a) * spd,
+      rnd(-12, 12),
+      rnd(-12, 12),
+      rnd(-12, 12),
+      5.5
+    );
+  }
 
   gr.boomLight.position.set(x, 2.2, z);
-  gr.boomLight.intensity = 140;
+  gr.boomLight.intensity = 65;
 
   physics.applyExplosionImpulse(x, 0.5, z, rad * 1.35, 16.0);
 
@@ -297,10 +372,42 @@ function explode(x, z, rad, dmg, foe = false) {
 }
 
 function ignite(x, z) {
-  fires.push({ x, z, t: 0, pt: 0 });
-  audio.sfx('fire');
+  audio.sfx('molotov');
   decal(x, z, 2.9, true);
   puff(x, 0.4, z, 24, '#ff9a30', 9.5, 0.5);
+
+  const grp = new THREE.Group();
+  grp.position.set(x, 0, z);
+
+  // Layer 1: Burning rippling liquid gasoline slick
+  const poolMat = createFuelPoolMaterial(gr.timeUniform);
+  poolMat.userData.own = true;
+  const poolMesh = new THREE.Mesh(gr.G.circ, poolMat);
+  poolMesh.rotation.x = -Math.PI / 2;
+  poolMesh.scale.setScalar(2.65);
+  poolMesh.position.y = 0.035;
+  grp.add(poolMesh);
+
+  // Layer 2: 12 Animated volumetric flame tongues across the burning patch
+  const tongues = [];
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * TAU + rnd(-0.2, 0.2);
+    const rad = i < 3 ? rnd(0, 0.55) : rnd(0.65, 2.1);
+    const fm = gr.M.fireTongue.clone();
+    fm.userData.own = true;
+    const sp = new THREE.Sprite(fm);
+    const bx = Math.cos(ang) * rad;
+    const bz = Math.sin(ang) * rad;
+    const h0 = i < 3 ? rnd(1.7, 2.35) : rnd(1.0, 1.75);
+    const w0 = h0 * rnd(0.55, 0.72);
+    sp.position.set(bx, h0 * 0.44, bz);
+    sp.scale.set(w0, h0, 1);
+    grp.add(sp);
+    tongues.push({ sp, bx, bz, w0, h0, ph: rnd(0, TAU) });
+  }
+
+  worldGroup.add(grp);
+  fires.push({ x, z, t: 0, pt: 0, st: 0, group: grp, poolMat, tongues });
 }
 
 function hurtPlayer(d, sx, sz) {
@@ -465,7 +572,7 @@ function disposeHierarchy(root) {
       o.skeleton._disposed = true;
       o.skeleton.dispose();
     }
-    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
+    if (!o.isSprite && o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
     if (o.material) {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
@@ -489,6 +596,16 @@ function buildLevelWorld(lvlIndex) {
     r.mesh.material.dispose();
   }
   rings = [];
+  for (const b of blastClouds) {
+    gr.scene.remove(b.mesh);
+    b.mesh.material.dispose();
+  }
+  blastClouds = [];
+  for (const sw of shockwaves) {
+    gr.scene.remove(sw.mesh);
+    sw.mesh.material.dispose();
+  }
+  shockwaves = [];
   for (const m of casePool) m.visible = false;
   for (const m of gr.nadePool) m.visible = false;
 
@@ -499,6 +616,9 @@ function buildLevelWorld(lvlIndex) {
   fires = [];
   decals = [];
   holes = [];
+  dialogueQueue = [];
+  bossConfronted = false;
+  execTarget = null;
 
   physics.reset();
   physics.onProjectileContact = (entry, other) => {
@@ -594,7 +714,7 @@ function buildLevelWorld(lvlIndex) {
     gr.scene.remove(playerMesh);
     disposeHierarchy(playerMesh);
   }
-  playerMesh = cf.createPerson('hero', WEAPONS[P.gun].snd);
+  playerMesh = cf.createPerson('hero', WEAPONS[P.gun].modelKey);
   P.mesh = playerMesh;
   gr.scene.add(playerMesh);
 
@@ -623,25 +743,227 @@ function startLevel(idx) {
   buildLevelWorld(idx);
   state = 'play';
   ui.hidden = true;
+  armoryEl.hidden = true;
   input.lockPointer();
   audio.startRain();
   audio.setEnvironment(level.cfg.style);
   audio.playMusic(level.cfg.music);
-  if (level.cfg.intro) radio(level.cfg.intro, 5.2);
+  const reply =
+    idx === 0
+      ? '沈孤鸿：「下雨天最适合办事……黑龙帮，今晚算总账。」'
+      : idx === 1
+        ? '沈孤鸿：「江面风大，巡逻的枪声盖得住——行动。」'
+        : '沈孤鸿：「黑龙，十年恩怨，就在这间货栈做个了断。」';
+  if (level.cfg.intro) queueDialogue([[level.cfg.intro, 4.4], [reply, 3.6]]);
 }
 
 function newGame() {
   score = 0;
-  P.resetAll();
+  P.resetAll(true);
   startLevel(0);
 }
 
-function panel(html, btn, cb) {
-  ui.innerHTML = `<div class="panel">${html}<button class="go" id="goBtn" type="button">${btn}</button></div>`;
+function findExecTarget() {
+  let best = null;
+  let bd = 2.75;
+  for (const e of level.enemies) {
+    if (e.hp <= 0) continue;
+    const d = Math.hypot(e.x - P.x, e.z - P.z);
+    if (d > bd) continue;
+    if (!level.los(P.x, P.z, e.x, e.z)) continue;
+    const dirDot = ((P.x - e.x) * Math.cos(e.ang) + (P.z - e.z) * Math.sin(e.ang)) / (d || 1);
+    const behind = dirDot < -0.15;
+    const vulnerable =
+      !e.awake ||
+      behind ||
+      e.stun > 0 ||
+      e.type === 'thug' ||
+      (e.type === 'boss' ? e.hp <= e.max * 0.18 : e.hp <= e.max * 0.65);
+    if (vulnerable) {
+      bd = d;
+      best = e;
+    }
+  }
+  return best;
+}
+
+function tryExecute() {
+  if (state !== 'play' || P.execT > 0 || P.rollT > 0) return;
+  const e = findExecTarget();
+  if (!e) {
+    say('靠近背后、虚弱或硬直中的敌人按 [E] 处决');
+    return;
+  }
+  const dx = e.x - P.x;
+  const dz = e.z - P.z;
+  const d = Math.hypot(dx, dz) || 1;
+  const ndx = dx / d;
+  const ndz = dz / d;
+  const stealth = !e.awake;
+
+  // Collision-safe lunge close to target
+  if (d > 1.05) {
+    const moveDist = Math.min(d - 0.95, 1.4);
+    physics.movePlayer(ndx * moveDist, 0, ndz * moveDist);
+    const pos = physics.playerBody?.translation();
+    if (pos) {
+      P.x = pos.x;
+      P.z = pos.z;
+    }
+  }
+
+  P.ang = Math.atan2(ndz, ndx);
+  P.execT = 0.58;
+  P.inv = 0.78;
+  P.focus = Math.min(100, P.focus + 25);
+  P.hp = Math.min(100, P.hp + 12);
+  shake = Math.max(shake, stealth ? 0.14 : 0.34);
+
+  audio.playVoiceShout('exec', 1.2);
+  audio.sfx(stealth ? 'stealthExec' : 'combatExec');
+
+  if (stealth) e.awake = true; // Mark awake locally so hitEnemy won't alert nearby squadmates
+  const ctx = makeLogicCtx();
+  enemyMgr.hitEnemy(e, 999, ndx, ndz, e.ht * 0.92, ctx, !stealth);
+  score += stealth ? 150 : 120;
+  killMark = 0.45;
+  say(stealth ? '悄声暗杀！专注+25 · 生命+12' : '近身处决！专注+25 · 生命+12');
+  if (stealth) {
+    radio('沈孤鸿：「无声放倒一个……别惊动弄堂里的其他人。」', 2.8);
+  } else if (Math.random() < 0.6) {
+    radio('沈孤鸿：「下辈子记住，别拿枪指着我的头。」', 2.6);
+  }
+}
+
+function statPct(w) {
+  const dmgP = clamp(Math.round(((w.dmg * w.pellets) / 100) * 100), 14, 100);
+  const rofP = clamp(Math.round((0.08 / w.rate) * 100), 8, 100);
+  const accP = clamp(Math.round((1 - w.spread / 0.085) * 100), 15, 100);
+  const magP = clamp(Math.round((w.mag / 50) * 100), 10, 100);
+  return { dmgP, rofP, accP, magP };
+}
+
+function renderArmory() {
+  const slotHtml = [0, 1, 2]
+    .map(i => {
+      const wIdx = P.loadout[i];
+      const w = wIdx !== undefined ? WEAPONS[wIdx] : null;
+      const isActive = i === armorySlot;
+      const resStr = w ? (P.res[wIdx] === Infinity ? '∞' : P.res[wIdx]) : '';
+      return (
+        `<button type="button" class="slot-card${isActive ? ' active-slot' : ''}" data-slot="${i}">` +
+        `<span class="slot-num">0${i + 1}</span>` +
+        `<div class="slot-info"><b>${w ? w.name : '空槽位'}</b><span>${w ? `${P.mags[wIdx]}/${resStr} · 点击选定替换位` : '点击下方枪械放入此位'}</span></div>` +
+        `</button>`
+      );
+    })
+    .join('');
+
+  const gunHtml = WEAPONS.map((w, idx) => {
+    const sIdx = P.loadout.indexOf(idx);
+    const eq = sIdx !== -1;
+    const { dmgP, rofP, accP, magP } = statPct(w);
+    const prev = wf?.previews?.[w.modelKey] || '';
+    const resStr = P.res[idx] === Infinity ? '无限' : P.res[idx];
+    return (
+      `<button type="button" class="gun-card${eq ? ' equipped' : ''}" data-gun="${idx}">` +
+      `<div class="gun-top"><b>${w.fullName}</b>${eq ? `<span class="gun-badge">槽位 0${sIdx + 1}</span>` : ''}</div>` +
+      (prev ? `<img class="gun-prev" src="${prev}" alt="${w.fullName}">` : '') +
+      `<div class="gun-cal">${w.caliber} · 备弹 ${resStr}</div>` +
+      `<div class="gun-desc">${w.desc}</div>` +
+      `<div class="stat-grid">` +
+      `<span>威力</span><div class="stat-bar"><i style="width:${dmgP}%"></i></div>` +
+      `<span>射速</span><div class="stat-bar"><i style="width:${rofP}%"></i></div>` +
+      `<span>精准</span><div class="stat-bar"><i style="width:${accP}%"></i></div>` +
+      `<span>弹容</span><div class="stat-bar"><i style="width:${magP}%"></i></div>` +
+      `</div></button>`
+    );
+  }).join('');
+
+  armoryEl.innerHTML =
+    `<div class="armory-panel">` +
+    `<div class="armory-hdr"><div><h2>上海军械装备箱</h2><div class="armory-sub">从八款民国制式火器中任选 <b>最多 3 把</b> 随身携带（点击已装备可卸下，点击未装备填入或替换当前选中槽位）</div></div>` +
+    `<button type="button" class="btn-sec" id="armCloseTop">确认出战 [Esc/B]</button></div>` +
+    `<div class="slot-bar">${slotHtml}</div>` +
+    `<div class="gun-grid">${gunHtml}</div>` +
+    `<div class="armory-ftr"><button type="button" class="go" id="armConfirm">携带所选三把火器出发</button></div>` +
+    `</div>`;
+
+  armoryEl.querySelectorAll('.slot-card').forEach(btn => {
+    btn.onclick = () => {
+      armorySlot = +btn.dataset.slot;
+      audio.sfx('tick');
+      renderArmory();
+    };
+  });
+
+  armoryEl.querySelectorAll('.gun-card').forEach(btn => {
+    btn.onclick = () => {
+      const idx = +btn.dataset.gun;
+      const curSlot = P.loadout.indexOf(idx);
+      if (curSlot !== -1) {
+        if (P.loadout.length <= 1) {
+          say('至少需保留一把随身火器');
+          return;
+        }
+        P.loadout.splice(curSlot, 1);
+        if (P.slot >= P.loadout.length) P.slot = P.loadout.length - 1;
+        armorySlot = Math.min(armorySlot, P.loadout.length - 1);
+      } else if (P.loadout.length < 3) {
+        P.loadout.push(idx);
+        P.slot = P.loadout.length - 1;
+        armorySlot = P.slot;
+      } else {
+        const rep = clamp(armorySlot, 0, 2);
+        P.loadout[rep] = idx;
+        P.slot = rep;
+      }
+      P.gun = P.loadout[P.slot];
+      if (playerMesh) cf.setGun(playerMesh, WEAPONS[P.gun].modelKey);
+      audio.sfx('tick');
+      renderArmory();
+    };
+  });
+
+  document.getElementById('armCloseTop').onclick = closeArmory;
+  document.getElementById('armConfirm').onclick = closeArmory;
+}
+
+function openArmory() {
+  if (state === 'armory') {
+    closeArmory();
+    return;
+  }
+  prevArmoryState = state;
+  state = 'armory';
+  ui.hidden = true;
+  armoryEl.hidden = false;
+  input.mouse.down = input.mouse.right = false;
+  input.exitPointerLock();
+  renderArmory();
+}
+
+function closeArmory() {
+  if (state !== 'armory') return;
+  armoryEl.hidden = true;
+  state = prevArmoryState || 'menu';
+  if (state === 'play') {
+    ui.hidden = true;
+    input.lockPointer();
+  } else {
+    ui.hidden = false;
+  }
+}
+
+function panel(html, btn, cb, armBtn = false) {
+  const sec = armBtn ? '<button class="btn-sec" id="armOpenBtn" type="button">军械装备箱（选枪预览 · 最多3把）</button>' : '';
+  ui.innerHTML = `<div class="panel">${html}${sec}<button class="go" id="goBtn" type="button">${btn}</button></div>`;
   ui.hidden = false;
   input.exitPointerLock();
   const b = document.getElementById('goBtn');
   b.onclick = () => { audio.init(); cb(); };
+  const ab = document.getElementById('armOpenBtn');
+  if (ab) ab.onclick = () => { audio.init(); openArmory(); };
   b.focus();
 }
 
@@ -649,14 +971,15 @@ function menu() {
   state = 'menu';
   panel(
     '<div class="sub">Shanghai · 1937</div><h1>沪上孤枪</h1>' +
-    '<p>黑龙帮盘踞闸北，码头夜夜卸下军火。<b>一个人，四把枪，三条街。</b>打穿弄堂、码头与货仓，了结帮主“黑龙”。</p>' +
-    '<div class="keys"><span>WASD</span><span>移动</span><span>鼠标</span><span>转动视角，左键开火，按住右键举枪瞄准</span><span>G · F</span><span>手雷 · 燃烧瓶（真实物理反弹/碎裂）</span>' +
-    '<span>1 2 3 4 / Q</span><span>驳壳枪、冲锋枪、霰弹枪、步枪</span><span>空格 · Shift · C</span><span>跳跃（可跳上木箱/电车）· 翻滚 · 蹲下</span><span>Tab / V · 右键+Shift</span><span>子弹时间（0.28x 慢镜）· 飞身鱼跃慢镜射击</span><span>R · P · M · H</span><span>换弹 · 暂停 · 音乐 · 画质切换（镜头雨滴/倒影/AO/辉光）</span>' +
-    '<span>触屏</span><span>左半屏移动，右半屏滑动转向，瞄准敌人自动开火</span></div>' +
+    '<p>黑龙帮盘踞闸北，码头夜夜卸下军火。<b>八款民国火器任选三把，一人穿巷过街，了结帮主“黑龙”。</b></p>' +
+    '<div class="keys"><span>WASD · C · 空格</span><span>移动（含实感脚步声）· 蹲伏潜行 · 跳跃</span><span>鼠标左 / 右键</span><span>精准开火 · 长按右键肩射精准瞄准</span><span>E · G · F</span><span>近身处决/背后暗杀 · 手雷 · 燃烧瓶</span>' +
+    '<span>1 2 3 / Q · B</span><span>切换三把随身火器 · 打开八枪军械装备栏</span><span>Tab / V · 右键+Shift</span><span>子弹时间（0.28x 慢镜）· 飞身鱼跃慢镜射击</span><span>R · P · M · H</span><span>换弹 · 暂停 · 暗黑风潮氛围声 · 画质切换</span>' +
+    '<span>触屏</span><span>左半屏移动，右半屏滑动转向，点击军械/处决按钮操作</span></div>' +
     (best ? `<p>最高分 <b>${best}</b></p>` : '') +
-    '<p class="credit">引擎：Three.js r187 + Rapier3D WASM 物理引擎<br>模型与贴图：Poly Haven、OpenGameArt（CC0）　枪声：The Free Firearm Sound Library（CC0）<br>音乐：“Night on the Docks – Sax” Kevin MacLeod（CC BY 4.0）、“Noire Crime Time” withthelove（CC BY 3.0）、“Jazz Saxaphone”（CC0）</p>',
+    '<p class="credit">引擎：Three.js r187 + Rapier3D WASM 物理引擎<br>模型与贴图：Poly Haven、OpenGameArt（CC0）　枪声：The Free Firearm Sound Library + WebAudio 物理混响</p>',
     '开 始',
-    newGame
+    newGame,
+    true
   );
 }
 
@@ -696,18 +1019,28 @@ function levelClear() {
       P.hp = Math.min(100, P.hp + 35);
       P.nades = Math.max(P.nades, 2);
       startLevel(lvl);
-    }
+    },
+    true
   );
 }
 
 function togglePause() {
+  if (state === 'armory') {
+    closeArmory();
+    return;
+  }
   if (state === 'play') {
     state = 'pause';
-    panel(`<h2>暂停</h2><p>${level.cfg.name}</p>`, '继续', () => {
-      state = 'play';
-      ui.hidden = true;
-      input.lockPointer();
-    });
+    panel(
+      `<h2>暂停</h2><p>${level.cfg.name}</p>`,
+      '继续',
+      () => {
+        state = 'play';
+        ui.hidden = true;
+        input.lockPointer();
+      },
+      true
+    );
   } else if (state === 'pause') {
     state = 'play';
     ui.hidden = true;
@@ -733,7 +1066,14 @@ function updatePlay(dt) {
   time += simDt;
   if (banner > 0) banner -= dt;
   if (msgT > 0) msgT -= dt;
-  if (radioT > 0) radioT -= dt;
+  if (reloadSpeakCd > 0) reloadSpeakCd -= dt;
+  if (radioT > 0) {
+    radioT -= dt;
+    if (radioT <= 0 && dialogueQueue.length) {
+      const next = dialogueQueue.shift();
+      radio(next[0], next[1]);
+    }
+  }
   if (shake > 0) shake = Math.max(0, shake - dt * 2.5);
   if (hurtFlash > 0) hurtFlash -= dt;
   if (hitMark > 0) hitMark -= dt;
@@ -756,7 +1096,16 @@ function updatePlay(dt) {
 
   P.updateMovement(playerDt, input, physics, audio, (x, y, z) => {
     puff(x, y + 0.08, z, 8, '#8f8a80', 3.5, 0.4);
-  });
+  }, level.cfg.style);
+  execTarget = findExecTarget();
+
+  if (!bossConfronted && level.boss && level.boss.hp > 0 && level.boss.awake) {
+    bossConfronted = true;
+    queueDialogue([
+      ['黑龙：「沈孤鸿！坏我十桩买卖，今夜把命留在这儿！」', 3.4],
+      ['沈孤鸿：「废话留着去黄泉说吧。」', 2.8]
+    ]);
+  }
 
   const aim = P.aim3D(gr.camera, physics);
   aimHit = aim.hit;
@@ -791,11 +1140,18 @@ function updatePlay(dt) {
       P.res[P.gun] -= take;
     }
   } else if (P.mags[P.gun] <= 0) {
-    if (P.res[P.gun] > 0) P.reload(audio);
-    else if (P.gun !== 0) P.switchGun(0, cf, audio, say);
+    if (P.res[P.gun] > 0) {
+      P.reload(audio);
+      if (reloadSpeakCd <= 0 && level.enemies.some(e => e.hp > 0 && e.awake && Math.hypot(e.x - P.x, e.z - P.z) < 22)) {
+        reloadSpeakCd = 16;
+        radio('沈孤鸿：「弹匣见底……掩护换弹！」', 2.2);
+      }
+    } else {
+      P.nextGun(cf, audio, say);
+    }
   }
 
-  if (firing && P.cd <= 0 && P.reloadT <= 0 && P.rollT <= 0 && P.mags[P.gun] > 0) {
+  if (firing && P.cd <= 0 && P.reloadT <= 0 && P.rollT <= 0 && P.execT <= 0 && P.mags[P.gun] > 0) {
     P.cd = g.rate;
     P.mags[P.gun]--;
     audio.sfx(g.snd);
@@ -896,8 +1252,9 @@ function updatePlay(dt) {
             const head = pt.y > eTop - 0.3 * k;
             const mult = (head ? (e.type === 'soldier' ? 1.7 : 2.5) : pt.y < 0.85 * k ? 0.7 : 1) * clamp(1 - (b.dist - 22) / 70, 0.5, 1);
             const dirLen = Math.hypot(b.vx, b.vz) || 1;
+            const imp = (g?.push || 3.0) * 0.032;
             enemyMgr.hitEnemy(e, b.dmg * mult, b.vx / dirLen, b.vz / dirLen, pt.y, logicCtx, head);
-            level.moveEnt(e, (b.vx / dirLen) * 0.16, (b.vz / dirLen) * 0.16);
+            level.moveEnt(e, (b.vx / dirLen) * (0.08 + imp), (b.vz / dirLen) * (0.08 + imp));
             hitMark = 0.16;
             if (head) headMark = 0.3;
             if (e.hp <= 0) killMark = 0.4;
@@ -906,8 +1263,9 @@ function updatePlay(dt) {
             break;
           }
         } else if (meta?.kind === 'corpse' && b.pl) {
+          const pushScale = (g?.push || 3.0) / 3.0;
           meta.body.wakeUp();
-          meta.body.applyImpulseAtPoint({ x: (dx / segLen) * 2.8, y: 0.45, z: (dz / segLen) * 2.8 }, pt, true);
+          meta.body.applyImpulseAtPoint({ x: (dx / segLen) * 2.8 * pushScale, y: 0.45 * pushScale, z: (dz / segLen) * 2.8 * pushScale }, pt, true);
           puff(pt.x, pt.y, pt.z, 4, '#8e1a14', 3.8, 0.35);
           b.life = 0;
           break;
@@ -926,8 +1284,9 @@ function updatePlay(dt) {
         } else if (meta?.kind === 'barrel') {
           const rb = hit.collider.parent();
           if (rb) {
+            const pushScale = (g?.push || 3.0) / 3.0;
             rb.wakeUp();
-            rb.applyImpulseAtPoint({ x: (dx / segLen) * 4.5, y: 0.6, z: (dz / segLen) * 4.5 }, pt, true);
+            rb.applyImpulseAtPoint({ x: (dx / segLen) * 4.5 * pushScale, y: 0.6 * pushScale, z: (dz / segLen) * 4.5 * pushScale }, pt, true);
           }
           puff(pt.x, pt.y, pt.z, 7, '#ffd27a', 7.2, 0.2);
           audio.sfx('ricochet');
@@ -1000,13 +1359,17 @@ function updatePlay(dt) {
     }
   }
 
-  // Burning ground
+  // Burning ground (animated fuel slick + 3D volumetric flame tongues + rising dark smoke)
   for (const f of fires) {
     f.t += simDt;
     f.pt -= simDt;
-    if (parts.length < 520) {
-      puff(f.x + rnd(-2.2, 2.2), rnd(0.12, 0.75), f.z + rnd(-2.2, 2.2), 2, Math.random() < 0.5 ? '#ff8a2a' : '#ffd060', 1.4, 0.55);
+    f.st = (f.st || 0) - simDt;
+    if (f.st <= 0 && parts.length < 520) {
+      f.st = 0.08;
+      puff(f.x + rnd(-1.7, 1.7), rnd(0.9, 1.8), f.z + rnd(-1.7, 1.7), 2, Math.random() < 0.35 ? '#ffb050' : '#202228', 1.6, 0.85);
     }
+    const fadeK = clamp((7 - f.t) / 1.2, 0, 1);
+    if (f.poolMat) f.poolMat.uniforms.uFade.value = fadeK;
     for (const e of level.enemies) {
       if (e.hp > 0 && Math.hypot(e.x - f.x, e.z - f.z) < 2.75) {
         e.flash = 0.05;
@@ -1018,6 +1381,11 @@ function updatePlay(dt) {
     if (f.pt <= 0 && P.y < 1 && Math.hypot(P.x - f.x, P.z - f.z) < 2.6) {
       f.pt = 0.4;
       hurtPlayer(6, f.x, f.z);
+    }
+    if (f.t >= 7 && f.group) {
+      worldGroup.remove(f.group);
+      disposeHierarchy(f.group);
+      f.group = null;
     }
   }
   fires = fires.filter(f => f.t < 7);
@@ -1033,7 +1401,10 @@ function updatePlay(dt) {
         score += 300;
         audio.sfx('pick');
         say('联络人已解救，带他去北面出口！');
-        radio('地下联络人：「多谢了，兄弟！这条弄堂出口就在北面，我们走！」', 4.2);
+        queueDialogue([
+          ['地下联络人：「多谢了，兄弟！这条弄堂出口就在北面，我们走！」', 3.4],
+          ['沈孤鸿：「跟紧我脚步，别露在路灯下。」', 3.0]
+        ]);
       }
     } else if (hd > 2.9) {
       const f =
@@ -1117,14 +1488,17 @@ function updatePlay(dt) {
         P.armor = Math.min(100, P.armor + 50);
         say('防弹衣 +50');
       } else if (tp === 'smg') {
-        P.res[1] += 45;
-        say('冲锋枪子弹 +45');
+        P.res[3] += 32;
+        P.res[4] += 50;
+        say('冲锋枪弹药 +32 / +50');
       } else if (tp === 'shell') {
-        P.res[2] += 10;
+        P.res[5] += 10;
         say('霰弹 +10');
       } else if (tp === 'rifle') {
-        P.res[3] += 5;
-        say('步枪子弹 +5（按 4 切换）');
+        P.res[2] += 12;
+        P.res[6] += 8;
+        P.res[7] += 20;
+        say('步枪/轻机枪/左轮弹药补充');
       } else if (tp === 'molo') {
         P.molo++;
         say('燃烧瓶 +1（按 F 投掷）');
@@ -1176,8 +1550,10 @@ function syncScene(dt) {
   if (playerMesh) {
     const rolling = P.rollT > 0;
     const diving = P.diveT > 0;
+    const execing = P.execT > 0;
     const pu = playerMesh.userData;
-    pu.rate = rolling ? 1.6 : diving ? 0.45 : P.air ? 0.5 : P.ads > 0.5 ? 1.5 : 1.12;
+    pu.rate = rolling ? 1.6 : diving ? 0.45 : execing ? 2.2 : P.air ? 0.5 : P.ads > 0.5 ? 1.5 : 1.12;
+    pu.strike = execing ? Math.sin((P.execT / 0.58) * Math.PI) : 0;
     const mode = state === 'play' && (P.moving || rolling || P.air) && !diving ? (P.ads > 0.5 && !rolling ? 'Walk' : 'Run') : 'Idle';
     const aimElev = state === 'play' && !rolling ? -(P.pitch - P.recoil) * 0.65 : 0;
 
@@ -1197,6 +1573,12 @@ function syncScene(dt) {
       pu.pivot.rotation.x = localRight * 0.95 * diveEase;
       pu.pivot.rotation.z = -localFwd * 0.95 * diveEase;
       pu.pivot.position.y = 0.9 + diveEase * 0.34;
+      pu.pivot.scale.setScalar(1);
+    } else if (execing) {
+      const lungeEase = Math.sin((P.execT / 0.58) * Math.PI);
+      pu.pivot.rotation.x = 0;
+      pu.pivot.rotation.z = -0.34 * lungeEase;
+      pu.pivot.position.y = 0.9;
       pu.pivot.scale.setScalar(1);
     } else {
       pu.pivot.rotation.x = 0;
@@ -1222,8 +1604,20 @@ function syncScene(dt) {
 
   {
     const f = fires[fires.length - 1];
-    gr.fireLight.intensity = f ? 36 + Math.sin(time * 31) * 10 : 0;
+    gr.fireLight.intensity = f ? 16 + Math.sin(time * 28) * 4 : 0;
     if (f) gr.fireLight.position.set(f.x, 1.1, f.z);
+  }
+
+  for (const f of fires) {
+    const fadeK = clamp((7 - f.t) / 1.2, 0, 1);
+    for (const tg of f.tongues || []) {
+      const pulseY = 0.72 + Math.sin(time * 17 + tg.ph) * 0.28;
+      const swayX = Math.sin(time * 11 + tg.ph) * 0.14;
+      const hCur = tg.h0 * pulseY * (0.4 + 0.6 * fadeK);
+      tg.sp.scale.set(tg.w0 * (0.85 + 0.15 * Math.cos(time * 14 + tg.ph)), hCur, 1);
+      tg.sp.position.set(tg.bx + swayX, hCur * 0.44, tg.bz);
+      tg.sp.material.opacity = fadeK * (0.72 + 0.2 * Math.sin(time * 21 + tg.ph));
+    }
   }
 
   for (const s of steamSprites) {
@@ -1276,6 +1670,48 @@ function syncScene(dt) {
   }
   rings = rings.filter(r => !r.dead);
 
+  for (let i = 0; i < shockwaves.length; i++) {
+    const sw = shockwaves[i];
+    sw.t += dt;
+    const k = clamp(sw.t / sw.dur, 0, 1);
+    const s = 0.6 + sw.max * k;
+    sw.mesh.scale.setScalar(s);
+    sw.mesh.material.opacity = Math.max(0, 0.72 * (1 - k) * (1 - k));
+    if (k >= 1) {
+      gr.scene.remove(sw.mesh);
+      sw.mesh.material.dispose();
+      sw.dead = true;
+    }
+  }
+  shockwaves = shockwaves.filter(sw => !sw.dead);
+
+  for (let i = 0; i < blastClouds.length; i++) {
+    const bc = blastClouds[i];
+    bc.t += dt;
+    if (bc.t < 0) continue;
+    const k = clamp(bc.t / bc.dur, 0, 1);
+    bc.mesh.position.x += bc.vx * dt * (1 - k * 0.55);
+    bc.mesh.position.y += bc.vy * dt * (1 - k * 0.45);
+    bc.mesh.position.z += bc.vz * dt * (1 - k * 0.55);
+    const sc = bc.s0 + (bc.s1 - bc.s0) * Math.pow(k, 0.55);
+    bc.mesh.scale.setScalar(sc);
+    const col = bc.mesh.material.color;
+    if (k < 0.18) {
+      col.setHex(0xfff0b8).lerp(getCol('#ff5a14'), k / 0.18);
+    } else if (k < 0.45) {
+      col.setHex(0xff5a14).lerp(getCol('#68180c'), (k - 0.18) / 0.27);
+    } else {
+      col.setHex(0x68180c).lerp(getCol('#1c1e24'), Math.min(1, (k - 0.45) / 0.35));
+    }
+    bc.mesh.material.opacity = k < 0.7 ? 0.92 - k * 0.28 : Math.max(0, 0.72 * ((1 - k) / 0.3));
+    if (k >= 1) {
+      gr.scene.remove(bc.mesh);
+      bc.mesh.material.dispose();
+      bc.dead = true;
+    }
+  }
+  blastClouds = blastClouds.filter(bc => !bc.dead);
+
   for (const p of pickups) {
     p.mesh.rotation.y += dt * 2;
     p.mesh.position.y = 0.6 + Math.sin(p.t * 3) * 0.12;
@@ -1311,11 +1747,11 @@ function syncScene(dt) {
 
   P.updateCamera(gr.camera, gr.baseFov, state, time, muzzle, shake, physics);
 
-  // Lights & thunderstorm double-pulse lightning
+  // Lights & thunderstorm double-pulse lightning (restrained Film-Noir exposure)
   const lf = lightningFlash;
   const pulse = lf > 0 ? (lf > 0.65 ? Math.sin(((lf - 0.65) / 0.35) * Math.PI) : lf < 0.5 ? Math.sin((lf / 0.5) * Math.PI) * 0.65 : 0.15) : 0;
-  gr.sun.intensity = 2.4 + pulse * 8.5;
-  gr.hemi.intensity = 0.95 + pulse * 1.6;
+  gr.sun.intensity = 1.35 + pulse * 3.6;
+  gr.hemi.intensity = 0.58 + pulse * 0.75;
   gr.sun.position.set(P.x + 24, 46, P.z + 16);
   gr.sun.target.position.set(P.x, 0, P.z);
   gr.moon.position.set(gr.camera.position.x + 110, 95, gr.camera.position.z - 230);
@@ -1329,7 +1765,7 @@ function syncScene(dt) {
     if (near[0]) {
       gr.heroSpot.position.set(near[0].lx, near[0].ly - 0.15, near[0].lz);
       gr.heroSpot.target.position.set(near[0].lx, 0, near[0].lz);
-      gr.heroSpot.intensity = 42;
+      gr.heroSpot.intensity = 13;
     } else {
       gr.heroSpot.intensity = 0;
     }
@@ -1337,7 +1773,7 @@ function syncScene(dt) {
       const l = near[i];
       if (l) {
         gr.lampLights[i].position.set(l.lx, l.ly - 0.25, l.lz);
-        gr.lampLights[i].intensity = i === 0 ? 8 : 32;
+        gr.lampLights[i].intensity = i === 0 ? 2.5 : 9.5;
       } else {
         gr.lampLights[i].intensity = 0;
       }
@@ -1347,12 +1783,12 @@ function syncScene(dt) {
   {
     const c = Math.cos(P.ang);
     const s = Math.sin(P.ang);
-    const tip = 0.75 + (WEAPON_TIPS[WEAPONS[P.gun].snd] || 0.34);
+    const tip = 0.75 + (WEAPON_TIPS[WEAPONS[P.gun].modelKey] || 0.34);
     gr.flash.visible = muzzle > 0.45 && state === 'play';
     gr.flash.position.set(P.x + c * tip - s * 0.2, P.y + 1.4, P.z + s * tip + c * 0.2);
     gr.flash.scale.setScalar(rnd(0.75, 1.18));
     muzzle = Math.max(0, muzzle - dt * 14);
-    gr.muzzleLight.intensity = muzzle * 48;
+    gr.muzzleLight.intensity = muzzle * 20;
     gr.muzzleLight.position.set(P.x + c * 1.25, P.y + 1.5, P.z + s * 1.25);
     gr.boomLight.intensity = Math.max(0, gr.boomLight.intensity - dt * 380);
   }
@@ -1412,6 +1848,7 @@ function frame(ts) {
     killMark,
     headMark,
     aimHit,
+    execTarget,
     nades,
     pickups,
     timeLeft,
@@ -1456,14 +1893,26 @@ async function boot() {
     onMiddleClick: () => { if (state === 'play') throwNade(); },
     onWheel: () => { if (state === 'play') P.nextGun(cf, audio, say); },
     onKeyDown: code => {
+      if (code === 'KeyB' || code === 'KeyI') {
+        audio.init();
+        if (state === 'play' || state === 'pause' || state === 'menu' || state === 'clear' || state === 'armory') {
+          openArmory();
+        }
+        return;
+      }
       if (state !== 'play') return;
-      if (code === 'Digit1') P.switchGun(0, cf, audio, say);
-      else if (code === 'Digit2') P.switchGun(1, cf, audio, say);
-      else if (code === 'Digit3') P.switchGun(2, cf, audio, say);
-      else if (code === 'Digit4') P.switchGun(3, cf, audio, say);
+      if (code === 'Digit1') P.switchSlot(0, cf, audio, say);
+      else if (code === 'Digit2') P.switchSlot(1, cf, audio, say);
+      else if (code === 'Digit3') P.switchSlot(2, cf, audio, say);
       else if (code === 'KeyQ') P.nextGun(cf, audio, say);
-      else if (code === 'KeyR') P.reload(audio);
-      else if (code === 'Space') P.jump(audio, state);
+      else if (code === 'KeyE') tryExecute();
+      else if (code === 'KeyR') {
+        P.reload(audio);
+        if (reloadSpeakCd <= 0 && P.reloadT > 0 && level.enemies.some(e => e.hp > 0 && e.awake && Math.hypot(e.x - P.x, e.z - P.z) < 22)) {
+          reloadSpeakCd = 16;
+          radio('沈孤鸿：「换弹压哨……别露头！」', 2.0);
+        }
+      } else if (code === 'Space') P.jump(audio, state);
       else if (code === 'ShiftLeft' || code === 'ShiftRight') P.roll(input, audio);
       else if (code === 'KeyG') throwNade();
       else if (code === 'KeyF') throwMolo();
@@ -1512,6 +1961,7 @@ async function boot() {
     }
 
     wf = new WeaponFactory(gr);
+    wf.generatePreviews(WEAPONS);
     cf = new CharacterFactory(gr, assets, wf);
     archBuilder = new ArchitectureBuilder(gr, assets);
     propsBuilder = new PropsBuilder(gr, assets);

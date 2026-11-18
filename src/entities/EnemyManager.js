@@ -134,6 +134,11 @@ export class EnemyManager {
         vx = f[0];
         vz = f[1];
       }
+      if (!e.warCried && d < 7.0 && e.sees) {
+        e.warCried = true;
+        audio.playVoiceShout('charge', d);
+        callbacks.radio?.('黑龙帮打手：「剁了他！冲啊——！」', 2.6);
+      }
       e.cd -= dt;
       if (d < e.r + 0.5 + 0.5 && e.cd <= 0) {
         e.cd = 0.8;
@@ -274,7 +279,7 @@ export class EnemyManager {
           if (e.callT <= 0) {
             e.called = true;
             callbacks.say('增援到了！');
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 2; i++) {
               callbacks.spawnLive(i ? 'soldier' : 'gunman', e.x + rnd(-4.4, 4.4), e.z - rnd(2.5, 6.9), e.x, e.z);
             }
           }
@@ -303,10 +308,10 @@ export class EnemyManager {
           e.aimT = 0;
           e.burst = 0;
           callbacks.say('黑龙退到掩体后面了！');
-          for (let i = 0; i < 4; i++) {
+          for (let i = 0; i < 2; i++) {
             callbacks.spawnLive(
               i % 2 ? 'soldier' : 'gunner',
-              level.exitPos.x + (i - 1.5) * 6.25,
+              level.exitPos.x + (i - 0.5) * 6.25,
               10 * TILE,
               e.x,
               e.z + 3 * TILE
@@ -316,7 +321,7 @@ export class EnemyManager {
         if (e.summoned === 0 && e.hp < e.max * 0.25) {
           e.summoned++;
           callbacks.say('黑龙：来人！给我上！');
-          for (let i = 0; i < 4; i++) {
+          for (let i = 0; i < 2; i++) {
             callbacks.spawnLive('thug', e.x + rnd(-5.6, 5.6), e.z + rnd(2.5, 6.9), e.x, e.z);
           }
         }
@@ -329,6 +334,13 @@ export class EnemyManager {
     if (e.moving) {
       level.moveEnt(e, vx * sp * dt, vz * sp * dt);
       e.walk += (dt * sp) / 0.7;
+      if (d < 16) {
+        e.stepT = (e.stepT || 0) - dt;
+        if (e.stepT <= 0) {
+          e.stepT = e.type === 'thug' ? 0.34 : 0.44;
+          audio.playStep(level.cfg.style, clamp(0.18 * (1 - d / 16), 0.02, 0.16), false);
+        }
+      }
     }
   }
 
@@ -359,17 +371,26 @@ export class EnemyManager {
 
   hitEnemy(e, dmg, dx, dz, hitY, ctx, head = false) {
     if (e.hp <= 0 || e.inv > 0) return;
-    const { level, physics, callbacks } = ctx;
+    const { level, player: P, physics, audio, callbacks } = ctx;
     e.duck = false;
     e.hp -= dmg;
     e.flash = 0.08;
     e.flinch = 1.0;
-    e.stun = 0.16;
+    e.stun = Math.max(e.stun, dmg >= 28 ? 0.48 : 0.22);
     this.wake(level, e, callbacks);
     callbacks.puff(e.x, hitY ?? 1.25, e.z, 7, '#b3261e', 5.5, 0.45);
+    const distP = P ? Math.hypot(e.x - P.x, e.z - P.z) : 0;
+    audio?.playVoiceShout?.(e.hp <= 0 ? 'die' : 'grunt', distP);
 
     if (e.hp <= 0) {
       e.flash = 0;
+      if (callbacks.radio && (level.calloutCd || 0) <= 0 && Math.random() < 0.35) {
+        const hasMate = level.enemies.some(o => o !== e && o.hp > 0 && o.awake && Math.hypot(o.x - e.x, o.z - e.z) < 22);
+        if (hasMate) {
+          level.calloutCd = 8.5;
+          callbacks.radio('帮派分子：「有人倒了！散开找掩体，别露头！」', 2.8);
+        }
+      }
       callbacks.onEnemyKilled(e, head);
       if (e.phys) {
         physics.queueRemoveBody(e.phys.rb);

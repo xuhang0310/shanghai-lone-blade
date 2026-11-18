@@ -42,7 +42,7 @@ export class InputManager {
       if (e.target.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
       this.keys[e.code] = true;
       if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-      if (e.code === 'KeyP') { this.cb.onPause?.(); return; }
+      if (e.code === 'KeyP' || (e.code === 'Escape' && !this.locked)) { this.cb.onPause?.(); return; }
       if (e.repeat) return;
       this.cb.onKeyDown?.(e.code);
     });
@@ -167,6 +167,8 @@ export class InputManager {
     bindTouchBtn('bRoll', () => this.cb.onKeyDown?.('ShiftLeft'));
     bindTouchBtn('bPause', () => this.cb.onPause?.());
     bindTouchBtn('bNade', () => this.cb.onKeyDown?.('KeyG'));
+    bindTouchBtn('bExec', () => this.cb.onKeyDown?.('KeyE'));
+    bindTouchBtn('bArmory', () => this.cb.onKeyDown?.('KeyB'));
     bindTouchBtn('bFire', () => { this.touchFire = true; }, () => { this.touchFire = false; });
   }
 

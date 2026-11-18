@@ -344,6 +344,47 @@ export class AssetManager {
       c.fillStyle = g;
       c.fillRect(0, 0, 128, 128);
     }, 1, 1);
+
+    this.procTex.cloud = makeCanvasTexture(128, 128, c => {
+      c.clearRect(0, 0, 128, 128);
+      const puffs = [
+        [64, 64, 52, 0.85],
+        [44, 52, 34, 0.72],
+        [84, 54, 34, 0.72],
+        [52, 82, 32, 0.68],
+        [78, 80, 32, 0.68]
+      ];
+      for (const [cx, cy, rad, a] of puffs) {
+        const g = c.createRadialGradient(cx, cy, 2, cx, cy, rad);
+        g.addColorStop(0, `rgba(255,255,255,${a})`);
+        g.addColorStop(0.45, `rgba(245,245,245,${a * 0.62})`);
+        g.addColorStop(1, 'rgba(220,220,220,0)');
+        c.fillStyle = g;
+        c.fillRect(0, 0, 128, 128);
+      }
+    }, 1, 1);
+    this.procTex.cloud.wrapS = this.procTex.cloud.wrapT = THREE.ClampToEdgeWrapping;
+
+    this.procTex.flame = makeCanvasTexture(96, 160, c => {
+      c.clearRect(0, 0, 96, 160);
+      const tongues = [
+        [48, 118, 30, 0.92],
+        [40, 86, 24, 0.78],
+        [56, 82, 24, 0.75],
+        [48, 50, 18, 0.62],
+        [48, 28, 11, 0.38]
+      ];
+      for (const [cx, cy, rad, a] of tongues) {
+        const g = c.createRadialGradient(cx, cy, 1, cx, cy, rad);
+        g.addColorStop(0, `rgba(255,250,210,${a})`);
+        g.addColorStop(0.38, `rgba(255,148,42,${a * 0.82})`);
+        g.addColorStop(0.75, `rgba(210,48,14,${a * 0.38})`);
+        g.addColorStop(1, 'rgba(120,16,6,0)');
+        c.fillStyle = g;
+        c.fillRect(0, 0, 96, 160);
+      }
+    }, 1, 1);
+    this.procTex.flame.wrapS = this.procTex.flame.wrapT = THREE.ClampToEdgeWrapping;
   }
 
   pbr(id, extra = {}) {

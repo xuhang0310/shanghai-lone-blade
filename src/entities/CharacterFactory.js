@@ -1124,7 +1124,7 @@ export class CharacterFactory {
 
   setGun(g, k) {
     const u = g.userData;
-    const cls = k === 'knife' ? 'knife' : k === 'pistol' ? 'pistol' : 'long';
+    const cls = k === 'knife' ? 'knife' : (k === 'pistol' || k === 'browning' || k === 'revolver') ? 'pistol' : 'long';
     const x = u.xf[cls];
     u.gun.geometry = this.wf.getGeometry(k);
     u.melee = k === 'knife';

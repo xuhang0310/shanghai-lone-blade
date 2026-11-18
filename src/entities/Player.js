@@ -20,10 +20,12 @@ const _tmpV = new THREE.Vector3();
 
 export class PlayerController {
   constructor() {
+    this.loadout = [0, 3, 5];
     this.resetAll();
   }
 
-  resetAll() {
+  resetAll(keepLoadout = false) {
+    const savedLoadout = keepLoadout && this.loadout?.length ? this.loadout.slice(0, 3) : [0, 3, 5];
     this.x = 0;
     this.y = 0;
     this.z = 0;
@@ -32,9 +34,11 @@ export class PlayerController {
     this.pitch = 0.2;
     this.hp = 100;
     this.armor = 0;
-    this.gun = 0;
-    this.mags = [8, 30, 6, 0];
-    this.res = [Infinity, 60, 12, 0];
+    this.loadout = savedLoadout;
+    this.slot = 0;
+    this.gun = this.loadout[0];
+    this.mags = WEAPONS.map(w => w.mag);
+    this.res = WEAPONS.map(w => w.initRes);
     this.nades = 3;
     this.molo = 1;
     this.crouch = false;
@@ -49,6 +53,8 @@ export class PlayerController {
     this.rdz = 0;
     this.inv = 0;
     this.walk = 0;
+    this.stepAccum = 0;
+    this.execT = 0;
     this.nadeCd = 0;
     this.moving = false;
     this.ads = 0;
@@ -74,6 +80,8 @@ export class PlayerController {
     this.air = false;
     this.rollT = 0;
     this.diveT = 0;
+    this.execT = 0;
+    this.stepAccum = 0;
     this.reloadT = 0;
     this.ads = 0;
     this.recoil = 0;
@@ -82,6 +90,9 @@ export class PlayerController {
     this.still = 0;
     this.bulletTime = false;
     this.btK = 0;
+    if (!this.loadout.length) this.loadout = [0];
+    if (this.slot >= this.loadout.length) this.slot = 0;
+    this.gun = this.loadout[this.slot];
   }
 
   currentHeight() {
@@ -132,8 +143,26 @@ export class PlayerController {
     audio.sfx('roll');
   }
 
+  switchSlot(slotIdx, charFactory, audio, say) {
+    if (slotIdx < 0 || slotIdx >= this.loadout.length) return;
+    this.slot = slotIdx;
+    const wIdx = this.loadout[slotIdx];
+    if (wIdx === this.gun) return;
+    this.gun = wIdx;
+    this.reloadT = 0;
+    this.cd = 0.22;
+    audio.sfx('tick');
+    if (this.mesh) charFactory.setGun(this.mesh, WEAPONS[wIdx].modelKey);
+    say?.(WEAPONS[wIdx].fullName);
+  }
+
   switchGun(i, charFactory, audio, say) {
-    if (i === this.gun) return;
+    const sIdx = this.loadout.indexOf(i);
+    if (sIdx !== -1) {
+      this.switchSlot(sIdx, charFactory, audio, say);
+      return;
+    }
+    if (i < 0 || i >= WEAPONS.length || i === this.gun) return;
     if (this.mags[i] + this.res[i] <= 0) {
       say(`${WEAPONS[i].name}没有弹药`);
       return;
@@ -142,17 +171,13 @@ export class PlayerController {
     this.reloadT = 0;
     this.cd = 0.25;
     audio.sfx('tick');
-    if (this.mesh) charFactory.setGun(this.mesh, WEAPONS[i].snd);
+    if (this.mesh) charFactory.setGun(this.mesh, WEAPONS[i].modelKey);
   }
 
   nextGun(charFactory, audio, say) {
-    for (let j = 1; j <= 4; j++) {
-      const i = (this.gun + j) % 4;
-      if (this.mags[i] + this.res[i] > 0) {
-        this.switchGun(i, charFactory, audio, say);
-        return;
-      }
-    }
+    if (this.loadout.length <= 1) return;
+    const nextSlot = (this.slot + 1) % this.loadout.length;
+    this.switchSlot(nextSlot, charFactory, audio, say);
   }
 
   reload(audio) {
@@ -162,7 +187,7 @@ export class PlayerController {
     audio.sfx('reload');
   }
 
-  updateMovement(dt, input, physics, audio, onLandDust) {
+  updateMovement(dt, input, physics, audio, onLandDust, levelStyle = 'cobble') {
     // Non-locked keyboard / screen-edge camera yaw
     if (input.keys.ArrowLeft) this.ang -= dt * 2.4;
     if (input.keys.ArrowRight) this.ang += dt * 2.4;
@@ -176,8 +201,9 @@ export class PlayerController {
     this.rollCd -= dt;
     this.nadeCd -= dt;
     if (this.inv > 0) this.inv -= dt;
+    if (this.execT > 0) this.execT = Math.max(0, this.execT - dt);
 
-    const wantAds = input.mouse.right && !input.isTouch && this.rollT <= 0 && this.reloadT <= 0 ? 1 : 0;
+    const wantAds = input.mouse.right && !input.isTouch && this.rollT <= 0 && this.reloadT <= 0 && this.execT <= 0 ? 1 : 0;
     this.ads += (wantAds - this.ads) * Math.min(1, dt * 12);
     this.bloom = Math.max(0, this.bloom - dt * 2.4);
     this.recoil -= this.recoil * Math.min(1, dt * 7);
@@ -191,7 +217,9 @@ export class PlayerController {
 
     let moveX = 0;
     let moveZ = 0;
-    if (this.rollT > 0) {
+    if (this.execT > 0) {
+      this.moving = false;
+    } else if (this.rollT > 0) {
       this.rollT -= dt;
       moveX = this.rdx * PLAYER_ROLL_SPEED * dt;
       moveZ = this.rdz * PLAYER_ROLL_SPEED * dt;
@@ -207,6 +235,17 @@ export class PlayerController {
       moveZ = mz * sp * dt;
       this.moving = !!(mx || mz);
       if (this.moving) this.walk += dt * 11;
+    }
+
+    if (this.moving && !this.air && this.rollT <= 0 && this.diveT <= 0 && this.execT <= 0) {
+      this.stepAccum += dt;
+      const stepInterval = this.crouch ? 0.52 : this.ads > 0.5 ? 0.44 : 0.34;
+      if (this.stepAccum >= stepInterval) {
+        this.stepAccum = 0;
+        audio.playStep(levelStyle, this.crouch ? 0.11 : 0.22, this.crouch);
+      }
+    } else {
+      this.stepAccum = Math.min(this.stepAccum, 0.2);
     }
 
     const prevVy = this.vy;
@@ -249,9 +288,10 @@ export class PlayerController {
     const cp = Math.cos(pe);
     const spv = Math.sin(pe);
 
-    // Shoulder position with wall occlusion check
-    const targetSx = this.x - s * 0.82;
-    const targetSz = this.z + c * 0.82;
+    // Shoulder position with wall occlusion check (tighter over-shoulder on Precision ADS)
+    const shoulderOff = 0.82 - 0.24 * this.ads;
+    const targetSx = this.x - s * shoulderOff;
+    const targetSz = this.z + c * shoulderOff;
     const shoulderY = this.camY + 1.75 - 0.5 * this.crouchK;
     let sx = targetSx;
     let sz = targetSz;
@@ -272,7 +312,7 @@ export class PlayerController {
       sz = this.z + (targetSz - this.z) * k;
     }
 
-    const dmax = 4.75 - 1.88 * this.ads;
+    const dmax = Math.max(1.2, 4.55 - 2.45 * this.ads - (this.execT > 0 ? 1.35 : 0));
     const backDx = -c * cp;
     const backDy = spv;
     const backDz = -s * cp;
@@ -304,7 +344,7 @@ export class PlayerController {
     );
     camera.lookAt(_tmpV);
 
-    const f = baseFov * (1 - 0.3 * this.ads) - 4.5 * (this.btK || 0) + muzzle * 0.5;
+    const f = baseFov * (1 - 0.28 * this.ads) - 4.5 * (this.btK || 0) - (this.execT > 0 ? 7 : 0) + muzzle * 0.5;
     if (Math.abs(f - camera.fov) > 0.01) {
       camera.fov = f;
       camera.updateProjectionMatrix();

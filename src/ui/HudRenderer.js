@@ -23,7 +23,7 @@ export class HudRenderer {
       state, time, player: P, level, camera, input,
       score, banner, msg, msgT, radioMsg, radioT,
       hurtFlash, hurtAng,
-      hitMark, killMark, headMark, aimHit,
+      hitMark, killMark, headMark, aimHit, execTarget,
       nades, pickups, timeLeft, planted,
       bloomEnabled, qualityLabel, exitOpen
     } = s;
@@ -244,20 +244,42 @@ export class HudRenderer {
       ctx.fillStyle = '#b9b2a2';
       ctx.textAlign = 'right';
       let t = '';
-      for (let i = 0; i < 4; i++) {
-        if (i < 3 || P.mags[3] + P.res[3] > 0) {
-          t += (i === P.gun ? '【' : ' ') + (i + 1) + ' ' + WEAPONS[i].name + (i === P.gun ? '】' : ' ') + ' ';
-        }
+      const slots = P.loadout || [0];
+      for (let i = 0; i < slots.length; i++) {
+        const gIdx = slots[i];
+        t += (i === P.slot ? '【' : ' ') + (i + 1) + ' ' + WEAPONS[gIdx].name + (i === P.slot ? '】' : ' ') + ' ';
       }
       ctx.fillText(t, w - 14, h - 18);
       ctx.font = '12px ' + FONT;
       ctx.fillStyle = bloomEnabled ? '#d9a441' : '#7f7a70';
-      ctx.fillText(`[H] 画质: ${qualityLabel || (bloomEnabled ? '极致电影' : '流畅直出')}`, w - 14, h - 42);
+      ctx.fillText(`[B] 军械装备栏（换枪/预览） · [H] ${qualityLabel || (bloomEnabled ? '极致电影' : '流畅直出')}`, w - 14, h - 42);
 
       if (!input.locked && state === 'play') {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#b9b2a2';
         ctx.fillText('点击画面锁定鼠标 · 未锁定时把鼠标移向屏幕两侧或按 ← → 转向', w / 2, h - 46);
+      }
+    }
+
+    // Floating Execution / Stealth Takedown prompt
+    if (execTarget && state === 'play') {
+      _tmpV.set(execTarget.x, execTarget.ht * 0.68, execTarget.z).project(camera);
+      if (_tmpV.z > -1 && _tmpV.z < 1) {
+        const ex = clamp((_tmpV.x * 0.5 + 0.5) * w, 80, w - 80);
+        const ey = clamp((-_tmpV.y * 0.5 + 0.5) * h, 60, h - 110);
+        const label = execTarget.awake ? '[E] 近身处决' : '[E] 悄声暗杀';
+        ctx.font = '700 13px ' + FONT;
+        const bw = ctx.measureText(label).width + 24;
+        ctx.fillStyle = 'rgba(12,16,28,0.86)';
+        ctx.strokeStyle = '#d9a441';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(ex - bw * 0.5, ey - 15, bw, 28, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd27a';
+        ctx.fillText(label, ex, ey + 4);
       }
     }
 
@@ -371,7 +393,7 @@ export class HudRenderer {
     if (state === 'play') {
       const x = w / 2;
       const y = h / 2;
-      const sp = 4 + WEAPONS[P.gun].spread * (1 + P.bloom * 1.8) * (P.moving ? 1.4 : 1) * (1 - 0.55 * P.ads) * (P.crouch ? 0.7 : 1) * 300;
+      const sp = 4 + WEAPONS[P.gun].spread * (1 + P.bloom * 1.8) * (P.moving ? 1.4 : 1) * (1 - 0.75 * P.ads) * (P.crouch ? 0.7 : 1) * 300;
       if (hitMark > 0 || killMark > 0) {
         ctx.strokeStyle = killMark > 0 ? '#ff4a3a' : headMark > 0 ? '#ffc84a' : '#ffffff';
         ctx.lineWidth = killMark > 0 ? 3 : 2;

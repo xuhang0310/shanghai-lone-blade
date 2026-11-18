@@ -10,15 +10,19 @@ export class AudioManager {
     this.revSend = null;
     this.revBuffers = {};
     this.pendingEnvStyle = 'cobble';
-    this.music = null;
+    this.droneGain = null;
+    this.droneOsc1 = null;
+    this.droneOsc2 = null;
+    this.foghornTimer = null;
     this.musicOn = true;
-    this.musicName = '';
     this.rainNode = null;
+    this.rainLowNode = null;
   }
 
   init() {
     if (this.AC) {
       if (this.AC.state === 'suspended') this.AC.resume();
+      this._startTensionDrone();
       return;
     }
     try {
@@ -35,6 +39,8 @@ export class AudioManager {
       this.revSend.connect(cv);
       cv.connect(AC.destination);
       this.setEnvironment(this.pendingEnvStyle);
+      this._startTensionDrone();
+      this.startRain();
 
       const names = ['pistol', 'smg1', 'smg2', 'smg3', 'shotgun', 'rifle', 'esmg', 'reload', 'pump'];
       for (const n of names) {
@@ -62,24 +68,72 @@ export class AudioManager {
     s.start();
   }
 
-  playMusic(name) {
-    if (this.musicName === name && this.music) {
-      if (this.musicOn && this.music.paused) this.music.play().catch(() => {});
-      return;
+  _startTensionDrone() {
+    if (!this.AC || this.droneGain) return;
+    const AC = this.AC;
+    const lp = AC.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 185;
+    const g = AC.createGain();
+    g.gain.value = this.musicOn ? 0.03 : 0;
+
+    const o1 = AC.createOscillator();
+    o1.type = 'triangle';
+    o1.frequency.value = 55;
+    const o2 = AC.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.value = 82.4;
+
+    o1.connect(lp);
+    o2.connect(lp);
+    lp.connect(g);
+    g.connect(AC.destination);
+    o1.start();
+    o2.start();
+    this.droneGain = g;
+    this.droneOsc1 = o1;
+    this.droneOsc2 = o2;
+
+    if (!this.foghornTimer) {
+      this.foghornTimer = setInterval(() => {
+        if (this.AC && this.AC.state === 'running' && this.musicOn && Math.random() < 0.65) {
+          this.playFoghorn();
+        }
+      }, 24000);
     }
-    this.musicName = name;
-    if (this.music) this.music.pause();
-    this.music = new Audio(`assets/music/${name}.mp3`);
-    this.music.loop = true;
-    this.music.volume = 0.28;
-    if (this.musicOn) this.music.play().catch(() => {});
+  }
+
+  playFoghorn() {
+    if (!this.AC) return;
+    const AC = this.AC;
+    const t = AC.currentTime;
+    const o = AC.createOscillator();
+    const f = AC.createBiquadFilter();
+    const g = AC.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(76, t);
+    o.frequency.linearRampToValueAtTime(72, t + 2.4);
+    f.type = 'lowpass';
+    f.frequency.value = 230;
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(0.022, t + 0.55);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.6);
+    o.connect(f);
+    f.connect(g);
+    g.connect(AC.destination);
+    if (this.revSend) g.connect(this.revSend);
+    o.start(t);
+    o.stop(t + 2.65);
+  }
+
+  playMusic() {
+    if (this.AC) this._startTensionDrone();
   }
 
   toggleMusic() {
     this.musicOn = !this.musicOn;
-    if (this.music) {
-      if (this.musicOn) this.music.play().catch(() => {});
-      else this.music.pause();
+    if (this.droneGain && this.AC) {
+      this.droneGain.gain.setTargetAtTime(this.musicOn ? 0.03 : 0, this.AC.currentTime, 0.08);
     }
     return this.musicOn;
   }
@@ -92,13 +146,113 @@ export class AudioManager {
     s.buffer = this.noiseBuf;
     s.loop = true;
     f.type = 'highpass';
-    f.frequency.value = 2500;
-    g.gain.value = 0.035;
+    f.frequency.value = 2800;
+    g.gain.value = 0.026;
     s.connect(f);
     f.connect(g);
     g.connect(this.AC.destination);
     s.start();
     this.rainNode = s;
+
+    // Stone/roof mid-low rain patter layer
+    const sl = this.AC.createBufferSource();
+    const fl = this.AC.createBiquadFilter();
+    const gl = this.AC.createGain();
+    sl.buffer = this.noiseBuf;
+    sl.loop = true;
+    fl.type = 'bandpass';
+    fl.frequency.value = 430;
+    fl.Q.value = 0.65;
+    gl.gain.value = 0.028;
+    sl.connect(fl);
+    fl.connect(gl);
+    gl.connect(this.AC.destination);
+    sl.start();
+    this.rainLowNode = sl;
+  }
+
+  playStep(style = 'cobble', vol = 0.22, crouch = false) {
+    if (!this.AC || !this.noiseBuf) return;
+    const AC = this.AC;
+    const t = AC.currentTime;
+    const v = vol * (crouch ? 0.55 : 1) * rnd(0.88, 1.12);
+    const s = AC.createBufferSource();
+    const f = AC.createBiquadFilter();
+    const g = AC.createGain();
+    s.buffer = this.noiseBuf;
+    if (style === 'plank') {
+      f.type = 'lowpass';
+      f.frequency.value = rnd(260, 340);
+      this.tone(rnd(130, 165), 62, 0.065, v * 0.45, 'triangle');
+    } else if (style === 'concrete') {
+      f.type = 'bandpass';
+      f.frequency.value = rnd(750, 980);
+      f.Q.value = 1.2;
+      this.tone(rnd(160, 200), 80, 0.045, v * 0.25, 'sine');
+    } else {
+      f.type = 'bandpass';
+      f.frequency.value = rnd(1050, 1450);
+      f.Q.value = 1.4;
+      this.tone(rnd(185, 225), 85, 0.05, v * 0.35, 'triangle');
+      if (Math.random() < 0.45) {
+        this.noise(0.055, rnd(2600, 3600), 1.8, v * 0.22, 'highpass');
+      }
+    }
+    g.gain.setValueAtTime(v * 0.55, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.085);
+    s.connect(f);
+    f.connect(g);
+    g.connect(AC.destination);
+    if (this.revSend) g.connect(this.revSend);
+    s.start(t);
+    s.stop(t + 0.09);
+  }
+
+  playVoiceShout(kind = 'charge', distMeters = 0) {
+    if (!this.AC || distMeters > 38) return;
+    const AC = this.AC;
+    const t = AC.currentTime;
+    const att = clamp(1 - distMeters / 38, 0.06, 1);
+
+    if (kind === 'exec') {
+      this.noise(0.075, 2100, 1.5, 0.26 * att, 'bandpass');
+      this.tone(180, 52, 0.14, 0.32 * att, 'triangle');
+      return;
+    }
+
+    const dur = kind === 'die' ? 0.38 : kind === 'grunt' ? 0.14 : 0.32;
+    const f0 = kind === 'charge' ? rnd(145, 170) : kind === 'grunt' ? rnd(125, 148) : rnd(118, 132);
+    const f1 = kind === 'charge' ? f0 * 0.85 : kind === 'grunt' ? 88 : 58;
+    const osc = AC.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f0, t);
+    if (kind === 'charge') osc.frequency.linearRampToValueAtTime(f0 * 1.26, t + 0.1);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+
+    const fmt1 = AC.createBiquadFilter();
+    fmt1.type = 'bandpass';
+    fmt1.frequency.value = kind === 'charge' ? 720 : 580;
+    fmt1.Q.value = 4.2;
+
+    const fmt2 = AC.createBiquadFilter();
+    fmt2.type = 'bandpass';
+    fmt2.frequency.value = kind === 'charge' ? 1280 : 1080;
+    fmt2.Q.value = 5.0;
+
+    const g = AC.createGain();
+    const peak = (kind === 'charge' ? 0.18 : 0.15) * att;
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(fmt1);
+    osc.connect(fmt2);
+    fmt1.connect(g);
+    fmt2.connect(g);
+    g.connect(AC.destination);
+    if (this.revSend) g.connect(this.revSend);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
   }
 
   noise(dur, freq, q, vol, type = 'bandpass') {
@@ -179,14 +333,23 @@ export class AudioManager {
   sfx(n) {
     if (!this.AC) return;
     const real = {
-      pistol: ['pistol', 0.85],
-      smg: ['smg' + (1 + ((Math.random() * 3) | 0)), 0.7],
-      shotgun: ['shotgun', 1],
-      rifle: ['rifle', 0.95],
-      reload: ['reload', 0.55]
+      pistol: ['pistol', 0.85, 1.0],
+      browning: ['pistol', 0.95, 0.82],
+      revolver: ['pistol', 1.0, 0.72],
+      mp18: ['smg2', 0.68, 0.88],
+      smg: ['smg' + (1 + ((Math.random() * 3) | 0)), 0.72, 1.0],
+      shotgun: ['shotgun', 1.0, 1.0],
+      rifle: ['rifle', 0.96, 1.0],
+      zb26: ['rifle', 0.86, 1.06],
+      reload: ['reload', 0.55, 1.0]
     }[n];
     if (real && this.BUF[real[0]]) {
-      this.playBuf(real[0], real[1], rnd(0.96, 1.04));
+      this.playBuf(real[0], real[1], real[2] * rnd(0.96, 1.04));
+      if (n === 'browning' || n === 'revolver' || n === 'zb26') {
+        this.tone(n === 'revolver' ? 195 : 155, 44, 0.14, 0.34, 'triangle');
+      } else if (n === 'mp18') {
+        this.tone(240, 95, 0.055, 0.14, 'square');
+      }
       if (n === 'shotgun' || n === 'rifle') {
         setTimeout(() => {
           if (this.AC && this.BUF.pump) this.playBuf('pump', 0.45, 1);
@@ -196,13 +359,24 @@ export class AudioManager {
     }
 
     switch (n) {
-      case 'land': this.noise(0.12, 180, 1, 0.35, 'lowpass'); break;
+      case 'land': this.noise(0.14, 180, 1, 0.38, 'lowpass'); break;
       case 'whistle':
         for (let i = 0; i < 5; i++) setTimeout(() => this.AC && this.tone(2500, 2900, 0.09, 0.09, 'square'), i * 110);
         break;
       case 'fire':
-        this.noise(0.5, 500, 0.5, 0.5, 'lowpass');
-        this.noise(0.3, 2500, 1, 0.15);
+      case 'molotov':
+        this.noise(0.14, 3800, 1.8, 0.26, 'highpass');
+        this.noise(0.75, 580, 0.55, 0.52, 'lowpass');
+        this.tone(260, 75, 0.42, 0.25, 'sine');
+        break;
+      case 'stealthExec':
+        this.noise(0.09, 2400, 1.8, 0.22, 'highpass');
+        this.tone(140, 48, 0.15, 0.35, 'triangle');
+        break;
+      case 'combatExec':
+        this.noise(0.08, 1200, 1.2, 0.28, 'bandpass');
+        if (this.BUF.pistol) this.playBuf('pistol', 0.95, 0.85);
+        this.tone(180, 45, 0.16, 0.4, 'triangle');
         break;
       case 'tick': this.tone(1900, 1200, 0.035, 0.1, 'square'); break;
       case 'whiz':
@@ -212,10 +386,19 @@ export class AudioManager {
       case 'ping': this.tone(2500, 2100, 0.14, 0.13, 'triangle'); break;
       case 'tink': this.tone(rnd(3800, 4600), 3000, 0.05, 0.03); break;
       case 'pistol': this.noise(0.12, 1800, 0.8, 0.35); this.tone(220, 60, 0.1, 0.3); break;
+      case 'browning':
+      case 'revolver': this.noise(0.16, 1300, 0.7, 0.42); this.tone(190, 45, 0.14, 0.38); break;
+      case 'mp18':
       case 'smg': this.noise(0.07, 2400, 0.9, 0.25); this.tone(260, 90, 0.06, 0.2); break;
+      case 'zb26':
+      case 'rifle':
       case 'shotgun': this.noise(0.3, 900, 0.5, 0.55); this.tone(160, 40, 0.22, 0.45); break;
       case 'eshot': this.noise(0.09, 1300, 1, 0.14); break;
-      case 'boom': this.noise(0.55, 300, 0.4, 0.8, 'lowpass'); this.tone(110, 25, 0.5, 0.6); break;
+      case 'boom':
+        this.noise(0.09, 2600, 0.9, 0.38, 'bandpass');
+        this.noise(0.95, 240, 0.45, 0.85, 'lowpass');
+        this.tone(95, 22, 0.72, 0.72, 'sine');
+        break;
       case 'hit': this.noise(0.05, 600, 2, 0.2); break;
       case 'hurt': this.tone(300, 90, 0.2, 0.3, 'sawtooth'); break;
       case 'pick': this.tone(660, 1320, 0.12, 0.18, 'triangle'); break;

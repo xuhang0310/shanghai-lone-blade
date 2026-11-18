@@ -308,7 +308,7 @@ export class PropsBuilder {
       l.lz = l.z + t.z;
 
       const sp = new THREE.Sprite(M.glowSprite);
-      sp.scale.set(2.1, 2.1, 1);
+      sp.scale.set(1.1, 1.1, 1);
       sp.position.set(l.lx, l.ly, l.lz);
       worldGroup.add(sp);
 
@@ -378,7 +378,7 @@ export class PropsBuilder {
         worldGroup.add(lGrp);
 
         const g2 = new THREE.Sprite(M.redGlow);
-        g2.scale.set(1.75, 1.75, 1);
+        g2.scale.set(1.05, 1.05, 1);
         g2.position.copy(lGrp.position);
         worldGroup.add(g2);
 
@@ -509,7 +509,7 @@ export class PropsBuilder {
         body.receiveShadow = true;
         grp.add(body);
         const lamp = new THREE.Sprite(M.glowSprite);
-        lamp.scale.set(2.4, 2.4, 1);
+        lamp.scale.set(1.05, 1.05, 1);
         lamp.position.set(0, 1.75, 0);
         grp.add(lamp);
         worldGroup.add(grp);
