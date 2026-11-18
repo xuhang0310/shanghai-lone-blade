@@ -1085,7 +1085,16 @@ function tryExecute() {
   const rMinus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 1.12), 0, Math.sin(yaw + Math.PI - 1.12), 2.2, GROUP_WORLD, physics.playerCollider);
   const side = !rPlus ? 1 : !rMinus ? -1 : rPlus.dist >= rMinus.dist ? 1 : -1;
 
+  const startEnemyAng = e.ang;
+  const rawTargetAng = stealth ? yaw : Math.atan2(-ndz, -ndx);
+  let deltaEnemyAng = (rawTargetAng - startEnemyAng) % TAU;
+  if (deltaEnemyAng > Math.PI) deltaEnemyAng -= TAU;
+  if (deltaEnemyAng < -Math.PI) deltaEnemyAng += TAU;
+  const startFlinch = Math.min(0.45, e.flinch || 0);
+
   e.executing = true;
+  e.duck = false;
+  e.flinch = 0;
   P.crouch = false;
   P.ang = yaw;
   P.execT = dur;
@@ -1107,6 +1116,12 @@ function tryExecute() {
     ndz,
     yaw,
     side,
+    startEnemyAng,
+    deltaEnemyAng,
+    startFlinch,
+    lastEnemyX: e.x,
+    lastEnemyZ: e.z,
+    freezeDrift: 0,
     didSmash: false,
     didFreeze: false,
     didKill: false
@@ -1133,6 +1148,17 @@ function updateExecution(dt) {
   const smashT = 0.22;
   const killT = s.stealth ? 0.38 : 0.42;
 
+  // Smooth C1 enemy turn & post-smash stumble slide (ZERO 1-frame yaw spin or teleport!)
+  if (e && e.hp > 0) {
+    e.ang = s.startEnemyAng + s.deltaEnemyAng * smooth01(t / smashT);
+    if (!s.stealth && t >= smashT && t < smashT + 0.14) {
+      const slideSpd = 1.35 * Math.sin(((t - smashT) / 0.14) * Math.PI);
+      level.moveEnt(e, s.ndx * slideSpd * dt, s.ndz * slideSpd * dt);
+    }
+    s.lastEnemyX = e.x;
+    s.lastEnemyZ = e.z;
+  }
+
   // Act 1: Controlled, Grounded Predator Stride to exact standoff distance
   if (e && e.hp > 0 && t < smashT) {
     const goalX = e.x - s.ndx * s.standoff;
@@ -1157,14 +1183,12 @@ function updateExecution(dt) {
   if (!s.didSmash && t >= smashT) {
     s.didSmash = true;
     if (e && e.hp > 0) {
-      e.ang = s.stealth ? s.yaw : Math.atan2(-s.ndz, -s.ndx);
       const arcX = P.x * 0.42 + e.x * 0.58;
       const arcZ = P.z * 0.42 + e.z * 0.58;
       if (s.stealth) {
         audio.sfx('execCrunch');
         hitstopT = 0.038;
         execFX.flash = 0.28;
-        e.flinch = 0.85;
         spawnSlashArc3D(arcX, P.y + 1.38, arcZ, s.yaw, -0.16, 0xd8eeff, 0.72);
       } else {
         audio.sfx('execCrunch');
@@ -1173,8 +1197,6 @@ function updateExecution(dt) {
         hitstopT = 0.045;
         execFX.flash = 0.38;
         e.flash = 0.10;
-        e.flinch = 1.15;
-        level.moveEnt(e, s.ndx * 0.12, s.ndz * 0.12);
         spawnSlashArc3D(arcX, P.y + 1.36, arcZ, s.yaw, 0.20, 0xffb85c, 0.80);
       }
     }
@@ -1214,7 +1236,6 @@ function updateExecution(dt) {
         ? '无 声 抹 喉'
         : ['一 枪 绝 杀', '雷 霆 伏 诛', '抵 颌 处 刑'][s.style] || '一 枪 绝 杀';
 
-      e.flinch = 1.25;
       e.flash = 0;
       const eu = e.mesh?.userData;
       if (eu?.hatMesh && eu.hatMesh.visible) {
@@ -1262,23 +1283,23 @@ function updateExecution(dt) {
     }
   }
 
-  // Act 3B: SHATTER FREEZE-FRAME -> Launch Victim Ragdoll Across Wet Cobblestones!
+  // Act 3B: SHATTER FREEZE-FRAME -> Heavy, Realistic Collapse onto Wet Cobblestones!
   if (s.didFreeze && !s.didKill && freezeFrameT <= 0) {
     s.didKill = true;
     audio.sfx('execRelease');
     if (!s.stealth) audio.sfx('execFinisher');
-    shake = Math.max(shake, s.stealth ? 0.18 : 0.48);
+    shake = Math.max(shake, s.stealth ? 0.12 : 0.28);
 
     if (e && e.hp > 0) {
       if (s.stealth) {
         e.awake = true;
-        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.86, makeLogicCtx(), true, 4.4);
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.86, makeLogicCtx(), true, 2.2);
         score += 180;
         killMark = 0.55;
         say('雨夜无声抹喉！生命+22 · 专注+35');
       } else {
         spawnExecShockRing(e.x, 0.10, e.z, 0xffc870, 3.8);
-        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.90, makeLogicCtx(), true, 14.8);
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.90, makeLogicCtx(), true, 5.2);
         for (const o of level.enemies) {
           if (o.hp > 0 && Math.hypot(o.x - P.x, o.z - P.z) < 8.8) {
             o.stun = Math.max(o.stun || 0, 1.25);
@@ -1299,22 +1320,18 @@ function updateExecution(dt) {
     }
   }
 
-  // 100% Continuous Cylindrical Camera Curve (ZERO step jumps!)
+  // 100% Continuous Cylindrical Camera Curve (ZERO step jumps on anchor, dist, or FOV!)
   const camIn = smooth01(t / 0.24);
   const camOut = smooth01((s.dur - t) / 0.28);
   const camK = Math.min(camIn, camOut);
   execFX.k = camK;
 
   const cu = smooth01((t - 0.14) / 0.24);
-  const anchorX = e && e.hp > 0
-    ? P.x * 0.54 + e.x * 0.46
-    : P.x + s.ndx * 0.60;
-  const anchorZ = e && e.hp > 0
-    ? P.z * 0.54 + e.z * 0.46
-    : P.z + s.ndz * 0.60;
+  const anchorX = P.x * 0.54 + s.lastEnemyX * 0.46;
+  const anchorZ = P.z * 0.54 + s.lastEnemyZ * 0.46;
 
   const baseDist = s.isLongGun ? 1.88 : 1.66;
-  const fovKick = s.didKill ? smooth01(1 - (t - killT) / 0.22) * 5.0 : 0;
+  const fovKick = s.didKill ? Math.sin(clamp((t - killT) / 0.24, 0, 1) * Math.PI) * 3.2 : 0;
 
   P.execCam = {
     k: camK,
@@ -1323,7 +1340,7 @@ function updateExecution(dt) {
     yaw: s.yaw,
     side: s.side,
     orbOff: 0.76 + 0.38 * cu,
-    dist: baseDist + 0.12 * (1 - cu) + 0.10 * (execFX.freeze || 0),
+    dist: baseDist + 0.12 * (1 - cu) + (s.freezeDrift || 0),
     camYOff: 1.28 + 0.14 * cu,
     lookY: 1.32 + 0.10 * cu,
     fov: 43 - 6.5 * cu,
@@ -2309,12 +2326,16 @@ function syncScene(dt) {
     m.visible = !far;
     if (far) continue;
     const u = m.userData;
+    let execFlinch = e.flinch || 0;
     if (e.executing && execSession && execSession.e === e) {
       const st = execSession.t;
-      const smT = 0.22;
-      const stagW = st >= smT ? smooth01((st - smT) / 0.10) : 0;
-      u.execPose = stagW > 0 ? { a: 'exec_victim_stagger', b: 'exec_victim_stagger', t: 1, w: stagW } : null;
-      u.execTwist = st >= smT ? -0.24 * stagW * Math.exp(-Math.max(0, st - smT) * 3.5) : 0;
+      const stagIn = st >= 0.20 ? smooth01((st - 0.20) / 0.10) : 0;
+      const stagSettle = st >= 0.30 ? smooth01((st - 0.30) / 0.12) : 0;
+      u.execPose = stagIn > 0 ? { a: 'exec_victim_stagger', b: 'exec_victim_stagger', t: 1, w: stagIn } : null;
+      u.execTwist = -0.18 * stagIn * (1 - 0.45 * stagSettle);
+      const preDecay = (execSession.startFlinch || 0) * (1 - smooth01(st / 0.20));
+      const hitRecoil = 0.52 * stagIn - 0.14 * stagSettle;
+      execFlinch = preDecay + hitRecoil;
     } else {
       u.execPose = null;
       u.execTwist = 0;
@@ -2322,9 +2343,13 @@ function syncScene(dt) {
     u.rate = e.awake ? clamp(e.spd / 5.6, 0.72, 1.25) : 0.95;
     u.strike = u.melee ? clamp((e.cd - 0.45) / 0.3, 0, 1) : 0;
     const eMode = e.executing || !e.awake ? 'RelaxIdle' : e.moving ? (e.spd < 3.1 ? 'Walk' : 'Run') : 'Idle';
-    const eReady = e.executing ? 0 : e.awake && (e.staggerT || 0) <= 0 ? 1 : 0.08;
-    const eAds = e.aimT > 0 || e.burst > 0 ? 1 : 0.35;
-    cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, e.executing ? Math.min(0.65, e.flinch || 0) : (e.flinch || 0), eReady, eAds);
+    const targetReady = e.executing ? 0 : e.awake && (e.staggerT || 0) <= 0 ? 1 : 0.08;
+    if (e.gunReady === undefined) e.gunReady = targetReady;
+    else e.gunReady += (targetReady - e.gunReady) * Math.min(1, dt * (e.executing ? 8.5 : 10.0));
+    const targetAds = !e.executing && (e.aimT > 0 || e.burst > 0) ? 1 : 0.35;
+    if (e.adsK === undefined) e.adsK = targetAds;
+    else e.adsK += (targetAds - e.adsK) * Math.min(1, dt * 10.0);
+    cf.poseMesh(m, e.x, e.z, e.ang, eMode, dt, 0, execFlinch, e.gunReady, e.adsK);
     u.mat.emissive.setHex(e.flash > 0 ? 0xaa3020 : 0);
     if (u.coatMat) u.coatMat.emissive.setHex(e.flash > 0 ? 0x551810 : 0);
     u.glint.visible = !e.executing && (e.aimT > 0 || e.burst > 0 || e.callT > 0);
@@ -2559,9 +2584,10 @@ function frame(ts) {
     freezeFrameT = Math.max(0, freezeFrameT - dt);
     execFX.freeze = clamp(freezeFrameT / 0.58, 0, 1);
     execFX.flash = Math.max(0, execFX.flash - dt * 3.4);
+    if (execSession) execSession.freezeDrift = 0.06 * smooth01(1 - execFX.freeze);
     if (P.execCam) {
       const baseD = execSession?.isLongGun ? 1.88 : 1.66;
-      P.execCam.dist = baseD + 0.09 * execFX.freeze;
+      P.execCam.dist = baseD + (execSession?.freezeDrift || 0);
     }
     effDt = 0;
   } else {

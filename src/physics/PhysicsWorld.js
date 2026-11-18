@@ -330,31 +330,36 @@ export class PhysicsWorld {
     return entry;
   }
 
-  spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.5) {
+  spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.2) {
     const halfH = 0.72 * scale;
-    const isHeavy = slideImpulse > 9.5;
+    const isHeavy = slideImpulse >= 4.5;
+    const clampedPush = Math.min(3.4, slideImpulse * 0.65);
+    const pLen = Math.hypot(pushX, pushZ);
+    const tx = pLen > 0.05 ? pushX / pLen : -dirSign * Math.cos(-initialYaw);
+    const tz = pLen > 0.05 ? pushZ / pLen : -dirSign * Math.sin(-initialYaw);
+    const toppleRate = isHeavy ? 3.6 : 3.1;
+
+    // Zero initial Z-tilt + exact 0.82*scale waist pivot = 0.00mm / 0.00° frame-0 snap!
     _q.setFromAxisAngle(_yAxis, initialYaw);
-    _q2.setFromAxisAngle(_zAxis, dirSign * (isHeavy ? 0.55 : 0.34));
-    _q.multiply(_q2);
     const rb = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, (isHeavy ? 0.92 : 0.82) * scale, z)
+        .setTranslation(x, 0.82 * scale, z)
         .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
-        .setLinvel(pushX * slideImpulse, isHeavy ? 2.85 : 1.3, pushZ * slideImpulse)
+        .setLinvel(tx * clampedPush, isHeavy ? 0.16 : 0.08, tz * clampedPush)
         .setAngvel({
-          x: pushZ * (isHeavy ? 9.5 : 6.0) + (Math.random() - 0.5) * 2.2,
-          y: (Math.random() - 0.5) * (isHeavy ? 4.5 : 2.5),
-          z: -pushX * (isHeavy ? 9.5 : 6.0) + (Math.random() - 0.5) * 2.2
+          x: tz * toppleRate + (Math.random() - 0.5) * 0.3,
+          y: (Math.random() - 0.5) * 0.45,
+          z: -tx * toppleRate + (Math.random() - 0.5) * 0.3
         })
         .setCcdEnabled(true)
-        .setLinearDamping(isHeavy ? 0.95 : 1.2)
-        .setAngularDamping(2.0)
+        .setLinearDamping(2.6)
+        .setAngularDamping(3.2)
     );
     const col = this.world.createCollider(
       RAPIER.ColliderDesc.cuboid(0.15 * scale, halfH, 0.27 * scale)
-        .setDensity(1.6)
-        .setFriction(0.88)
-        .setRestitution(0.04)
+        .setDensity(2.2)
+        .setFriction(0.96)
+        .setRestitution(0.0)
         .setCollisionGroups(makeCollisionGroups(GROUP_DEBRIS, GROUP_WORLD | GROUP_PROP | GROUP_DEBRIS)),
       rb
     );

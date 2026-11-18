@@ -409,11 +409,11 @@ export class EnemyManager {
       }
     }
     this.wake(level, e, callbacks);
-    const bloodCnt = execBoost > 8 ? 22 : execBoost > 0 ? 14 : 7;
-    const bloodSpd = execBoost > 8 ? 9.5 : 5.5;
+    const bloodCnt = execBoost >= 4.5 ? 22 : execBoost > 0 ? 14 : 7;
+    const bloodSpd = execBoost >= 4.5 ? 8.2 : 5.2;
     callbacks.puff(e.x, hitY ?? 1.25, e.z, bloodCnt, '#b3261e', bloodSpd, 0.52);
     if (execBoost > 0) {
-      callbacks.puff(e.x + (dx || 0) * 0.35, (hitY ?? 1.35) + 0.08, e.z + (dz || 0) * 0.35, 12, '#6e0d09', 7.2, 0.62);
+      callbacks.puff(e.x + (dx || 0) * 0.35, (hitY ?? 1.35) + 0.08, e.z + (dz || 0) * 0.35, 12, '#6e0d09', 6.4, 0.62);
     }
     const distP = P ? Math.hypot(e.x - P.x, e.z - P.z) : 0;
     audio?.playVoiceShout?.(e.hp <= 0 ? 'die' : 'grunt', distP);
@@ -421,13 +421,13 @@ export class EnemyManager {
     if (e.hp <= 0) {
       e.executing = false;
       e.flash = 0;
-      if (callbacks.radio && (level.calloutCd || 0) <= 0 && Math.random() < (execBoost > 8 ? 0.65 : 0.35)) {
+      if (callbacks.radio && (level.calloutCd || 0) <= 0 && Math.random() < (execBoost >= 4.5 ? 0.65 : 0.35)) {
         const hasMate = level.enemies.some(o => o !== e && o.hp > 0 && o.awake && Math.hypot(o.x - e.x, o.z - e.z) < 22);
         if (hasMate) {
           level.calloutCd = 8.5;
           callbacks.radio(
-            execBoost > 8
-              ? '帮派分子：「他一枪把老三贴脸崩飞了！！快退后开火！」'
+            execBoost >= 4.5
+              ? '帮派分子：「他贴脸一枪把老三处决了！！快退后开火！」'
               : '帮派分子：「有人倒了！散开找掩体，别露头！」',
             2.8
           );

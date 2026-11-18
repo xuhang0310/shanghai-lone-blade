@@ -22,7 +22,7 @@ const POSE = {
   exec_long_coil:      [[0.18, -0.88, 0.28], [0.86, 0.24, -0.34], [0.68, -0.54, 0.24], [0.76, 0.16, 0.62]],
   exec_long_bash:      [[0.46, -0.66, 0.20], [0.92, 0.16, -0.26], [0.86, -0.28, 0.18], [0.86, 0.12, 0.48]],
   exec_stealth_slash:  [[0.82, -0.16, -0.24], [0.74, 0.04, -0.58], [0.74, -0.22, 0.24], [0.82, 0.12, 0.48]],
-  exec_victim_stagger: [[0.28, -0.86, 0.24], [0.68, 0.18, -0.42], [0.32, -0.84, -0.22], [0.65, 0.18, 0.42]]
+  exec_victim_stagger: [[0.16, -0.92, 0.20], [0.52, -0.46, -0.18], [0.18, -0.92, -0.18], [0.48, -0.48, 0.18]]
 };
 
 const _q2 = new THREE.Quaternion();
@@ -1341,28 +1341,37 @@ export class CharacterFactory {
     if (u.coatMat) u.coatMat.emissive.setHex(0);
     m.scale.y = m.scale.x;
 
-    // Snapshot current live skeletal pose before computing relaxed Noir death target
+    // Snapshot full live skeletal pose (including Hips, Spine & Shoulders!) so death transition has ZERO 1-frame snaps
     const boneNames = [
-      'RightArm',
-      'RightForeArm',
-      'LeftArm',
-      'LeftForeArm',
+      'Hips',
+      'Spine',
       'Spine1',
       'Spine2',
       'Neck',
       'Head',
+      'RightShoulder',
+      'RightArm',
+      'RightForeArm',
+      'RightHand',
+      'LeftShoulder',
+      'LeftArm',
+      'LeftForeArm',
+      'LeftHand',
       'LeftUpLeg',
       'LeftLeg',
+      'LeftFoot',
       'RightUpLeg',
-      'RightLeg'
+      'RightLeg',
+      'RightFoot'
     ];
     const fromQ = {};
     for (const n of boneNames) {
       if (u.bones[n]) fromQ[n] = u.bones[n].quaternion.clone();
     }
 
+    const baseClip = u.acts.RelaxIdle ? 'RelaxIdle' : 'Idle';
     for (const n in u.acts) {
-      const w = n === 'Idle' ? 1 : 0;
+      const w = n === baseClip ? 1 : 0;
       u.w[n] = w;
       u.acts[n].setEffectiveWeight(w);
     }
