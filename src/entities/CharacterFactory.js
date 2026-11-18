@@ -910,12 +910,22 @@ export class CharacterFactory {
 
     const mat = new THREE.MeshStandardMaterial({
       map: this._getSkinTex(kind),
-      normalMap: isSoldier ? null : this.assets.manNor,
-      roughnessMap: isSoldier ? null : this.assets.manOrm,
-      roughness: isSoldier ? 0.82 : 0.92,
-      metalness: 0.05
+      ...(isSoldier ? {} : { normalMap: this.assets.manNor, roughnessMap: this.assets.manOrm }),
+      roughness: isSoldier ? 0.78 : 0.86,
+      metalness: 0.06
     });
     mat.userData.own = true;
+    const isHero = kind === 'hero';
+    mat.onBeforeCompile = shader => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        vec3 rimV = normalize(vViewPosition);
+        float rimN = 1.0 - clamp(abs(dot(normalize(normal), rimV)), 0.0, 1.0);
+        totalEmissiveRadiance += ${isHero ? 'vec3(0.20, 0.30, 0.50)' : 'vec3(0.22, 0.26, 0.38)'} * pow(rimN, 2.7);`
+      );
+    };
+    mat.customProgramCacheKey = () => (isHero ? 'char-skin-rim-hero' : isSoldier ? 'char-skin-rim-sol' : 'char-skin-rim-foe');
 
     const pivot = new THREE.Group();
     pivot.position.y = 0.9;
@@ -1006,8 +1016,15 @@ export class CharacterFactory {
                 transformed.xz += radD * (length(uCoatSway.xz) * 0.32 + 0.014) * skirtK;
               }`
             );
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <emissivemap_fragment>',
+            `#include <emissivemap_fragment>
+            vec3 cRimV = normalize(vViewPosition);
+            float cRimN = 1.0 - clamp(abs(dot(normalize(normal), cRimV)), 0.0, 1.0);
+            totalEmissiveRadiance += ${isHero ? 'vec3(0.24, 0.36, 0.58)' : 'vec3(0.20, 0.25, 0.40)'} * pow(cRimN, 2.5);`
+          );
         };
-        coatMat.customProgramCacheKey = () => 'noir-coat-cloth-v1';
+        coatMat.customProgramCacheKey = () => (isHero ? 'noir-coat-cloth-hero-v2' : 'noir-coat-cloth-foe-v2');
         const outfitMesh = new THREE.SkinnedMesh(outfitGeo, coatMat);
         outfitMesh.castShadow = true;
         outfitMesh.frustumCulled = false;

@@ -173,6 +173,24 @@ export class PropsBuilder {
       poleParts.push(partSpec(G.cylLo, '#dcdad2', [ix, 6.4, 0], [0.032, 0.14, 0.032]));
     }
 
+    // 8. 1930s Shanghai French-Concession Plane Tree (法国梧桐行道树 + 铸铁树池)
+    const treeParts = [
+      partSpec(G.box, '#22252c', [0, 0.04, 0], [1.28, 0.08, 1.28]),                     // cast-iron curb grate
+      partSpec(G.box, '#5e5a52', [0, 0.09, 0], [1.36, 0.06, 1.36]),                     // stone tree curb
+      partSpec(G.cylLo, '#5a5044', [0, 1.55, 0], [0.20, 3.1, 0.20], [0.04, 0, -0.03]),  // mottled sycamore trunk
+      // 4 spreading boughs
+      partSpec(G.cylLo, '#4d443a', [0.46, 3.35, 0.25], [0.09, 1.65, 0.09], [0.22, 0, -0.58]),
+      partSpec(G.cylLo, '#4d443a', [-0.48, 3.4, -0.22], [0.09, 1.7, 0.09], [-0.2, 0, 0.6]),
+      partSpec(G.cylLo, '#4d443a', [0.18, 3.5, -0.52], [0.08, 1.55, 0.08], [-0.56, 0, -0.18]),
+      partSpec(G.cylLo, '#4d443a', [-0.15, 3.45, 0.54], [0.08, 1.55, 0.08], [0.58, 0, 0.16]),
+      // Late-autumn olive/russet canopy clusters (high y=4.1..5.2 so sightlines underneath stay clear!)
+      partSpec(G.sphLo, '#3b4632', [0, 4.55, 0], [1.45, 0.95, 1.45]),
+      partSpec(G.sphLo, '#4f482d', [0.85, 4.15, 0.42], [1.08, 0.78, 1.05]),
+      partSpec(G.sphLo, '#35402e', [-0.88, 4.2, -0.38], [1.12, 0.82, 1.08]),
+      partSpec(G.sphLo, '#59492a', [0.32, 4.25, -0.88], [1.0, 0.75, 1.0]),
+      partSpec(G.sphLo, '#444b33', [-0.28, 4.3, 0.92], [1.02, 0.76, 1.02])
+    ];
+
     this.templates = {
       rickshaw: buildColoredGeometry(rickParts),
       sandbag: buildColoredGeometry(bagParts),
@@ -180,7 +198,8 @@ export class PropsBuilder {
       sedan: buildColoredGeometry(sedanParts),
       tram: buildColoredGeometry(tramParts),
       kiosk: buildColoredGeometry(kioskParts),
-      pole: buildColoredGeometry(poleParts)
+      pole: buildColoredGeometry(poleParts),
+      wutong: buildColoredGeometry(treeParts)
     };
 
     const p = this.assets.procTex;
@@ -548,6 +567,20 @@ export class PropsBuilder {
             }
           }
         }
+      }
+    }
+
+    // 6. 1930s Shanghai Avenue Plane Trees (法国梧桐)
+    if (level.trees?.length) {
+      for (const tr of level.trees) {
+        const tm = new THREE.Mesh(this.templates.wutong, this.mats.vertexLit);
+        tm.position.set(tr.x, 0, tr.z);
+        tm.rotation.y = tr.rotY;
+        tm.scale.setScalar(tr.scale);
+        tm.castShadow = true;
+        tm.receiveShadow = true;
+        worldGroup.add(tm);
+        physics.addStaticBox(tr.x, 1.5, tr.z, 0.22, 1.5, 0.22, 0, { kind: 'crate', tx: -1, tz: -1 }, GROUP_WORLD);
       }
     }
 

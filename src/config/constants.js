@@ -33,8 +33,8 @@ export const LEVELS = [
     walls: ['red_bricks_04', 'brick_wall_006'],
     music: 'noire-crime-time',
     mission: 'rescue',
-    sky: 0x0a1122,
-    fogDensity: 0.0115,
+    sky: 0x111e38,
+    fogDensity: 0.0085,
     intro: '一九三七年冬，上海。黑龙帮抓走了我们的联络人，关在弄堂深处。找到他，把他活着带出去。'
   },
   {
@@ -48,8 +48,8 @@ export const LEVELS = [
     music: 'night-on-the-docks',
     mission: 'demo',
     demoTime: 360,
-    sky: 0x07131a,
-    fogDensity: 0.0095,
+    sky: 0x0e2030,
+    fogDensity: 0.0075,
     intro: '军火今夜从十六铺码头上岸。六分钟内在三处军火箱上安放炸药，然后撤到北面出口。'
   },
   {
@@ -63,8 +63,8 @@ export const LEVELS = [
     music: 'jazz-saxophone',
     mission: 'boss',
     boss: true,
-    sky: 0x0e0a18,
-    fogDensity: 0.0118,
+    sky: 0x161428,
+    fogDensity: 0.0088,
     intro: '帮主“黑龙”就在苏州河大货栈深处。这笔账，今夜了结。'
   }
 ];

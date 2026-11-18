@@ -137,12 +137,12 @@ export function createWetGroundMaterial(assets, groundId, gameRenderer, wetness 
         float n1 = gNoise(vGroundWorldPos.xz * 0.24);
         float n2 = gNoise(vGroundWorldPos.xz * 0.65 + 4.2);
         float puddleMask = smoothstep(0.51, 0.72, (n1 * 0.68 + n2 * 0.32) * uWetness);
-        diffuseColor.rgb *= mix(0.84, 0.38, puddleMask);`
+        diffuseColor.rgb *= mix(0.96, 0.68, puddleMask);`
       )
       .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor * 0.88, 0.16, puddleMask);`
+        roughnessFactor = mix(roughnessFactor * 0.90, 0.26, puddleMask);`
       )
       .replace(
         '#include <normal_fragment_maps>',
@@ -159,9 +159,9 @@ export function createWetGroundMaterial(assets, groundId, gameRenderer, wetness 
           vec4 reflCoord = uReflectMatrix * vec4(vGroundWorldPos, 1.0);
           if (reflCoord.w > 0.001) {
             vec2 reflUv = reflCoord.xy / reflCoord.w + vec2(rDx, rDz) * 0.14;
-            vec3 reflCol = texture2D(tReflection, clamp(reflUv, 0.004, 0.996)).rgb;
+            vec3 reflCol = min(texture2D(tReflection, clamp(reflUv, 0.004, 0.996)).rgb, vec3(1.15));
             vec3 viewDirW = normalize(cameraPosition - vGroundWorldPos);
-            float fresnel = mix(0.28, 0.92, pow(1.0 - max(dot(viewDirW, vec3(0.0, 1.0, 0.0)), 0.0), 3.0));
+            float fresnel = mix(0.28, 0.90, pow(1.0 - max(dot(viewDirW, vec3(0.0, 1.0, 0.0)), 0.0), 3.0));
             totalEmissiveRadiance += reflCol * puddleMask * fresnel * uReflectStrength;
           }
         }`
@@ -257,7 +257,7 @@ export class GameRenderer {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.88;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -270,7 +270,7 @@ export class GameRenderer {
     this.reflectMatrix = new THREE.Matrix4();
     this.reflectTexUniform = { value: this.reflectRT.texture };
     this.reflectMatUniform = { value: this.reflectMatrix };
-    this.reflectStrengthUniform = { value: 0.32 };
+    this.reflectStrengthUniform = { value: 0.42 };
     this.reflectHideObjects = [];
     this._biasMatrix = new THREE.Matrix4().set(
       0.5, 0, 0, 0.5,
@@ -280,11 +280,11 @@ export class GameRenderer {
     );
     this._camFwd = new THREE.Vector3();
 
-    // Lighting calibrated for restrained 1930s Rain-Noir atmosphere
-    this.hemi = new THREE.HemisphereLight(0x7c9ad4, 0x261d15, 0.58);
+    // High-clarity AAA Moonlit Night + Warm Tungsten Contrast (clear visibility, zero glare)
+    this.hemi = new THREE.HemisphereLight(0x9dc0f5, 0x3d352e, 1.42);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(0x89a8d4, 1.35);
+    this.sun = new THREE.DirectionalLight(0xbad4ff, 2.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
@@ -301,17 +301,18 @@ export class GameRenderer {
 
     this.lampLights = [];
     for (let i = 0; i < 8; i++) {
-      const l = new THREE.PointLight(0xffad60, 0, 18, 1.75);
+      const l = new THREE.PointLight(0xffb468, 0, 26, 1.35);
       this.lampLights.push(l);
       this.scene.add(l);
     }
 
+    this.playerFill = new THREE.PointLight(0xa4c4f4, 3.2, 15, 1.4);
     this.muzzleLight = new THREE.PointLight(0xffd088, 0, 15, 1.5);
     this.boomLight = new THREE.PointLight(0xff9a40, 0, 36, 1.4);
     this.fireLight = new THREE.PointLight(0xff7a22, 0, 18, 1.5);
-    this.scene.add(this.muzzleLight, this.boomLight, this.fireLight);
+    this.scene.add(this.playerFill, this.muzzleLight, this.boomLight, this.fireLight);
 
-    this.heroSpot = new THREE.SpotLight(0xffad60, 0, 22, Math.PI * 0.44, 0.82, 1.65);
+    this.heroSpot = new THREE.SpotLight(0xffb870, 0, 28, Math.PI * 0.46, 0.86, 1.35);
     this.heroSpot.castShadow = true;
     this.heroSpot.shadow.mapSize.set(1024, 1024);
     this.heroSpot.shadow.camera.near = 0.6;
@@ -330,7 +331,7 @@ export class GameRenderer {
 
   _initEnvironment() {
     const es = new THREE.Scene();
-    es.background = new THREE.Color(0x0b1428);
+    es.background = new THREE.Color(0x253a5e);
     const eb = (col, x, y, z, r) => {
       const m = new THREE.Mesh(
         new THREE.SphereGeometry(1, 12, 8),
@@ -340,14 +341,15 @@ export class GameRenderer {
       m.scale.setScalar(r);
       es.add(m);
     };
-    eb(0xdbe4ff, 30, 42, -60, 8);
-    eb(0xffb060, -20, 6, 12, 3.5);
-    eb(0xffb060, 24, 5, 28, 3.5);
-    eb(0xff4640, -28, 4.5, -24, 2.8);
-    eb(0x4affc0, 22, 4.5, -18, 2.5);
-    eb(0x141720, 0, -60, 0, 55);
+    eb(0xdce8ff, 30, 48, -55, 14);
+    eb(0x5b7fb5, 0, 65, 0, 38);
+    eb(0xffbe76, -22, 8, 14, 5.5);
+    eb(0xffbe76, 24, 7, 28, 5.5);
+    eb(0xff5248, -28, 6, -24, 4.0);
+    eb(0x52ffd0, 22, 6, -18, 3.8);
+    eb(0x2a2d38, 0, -60, 0, 55);
     const pm = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pm.fromScene(es, 0.035).texture;
+    this.scene.environment = pm.fromScene(es, 0.04).texture;
     pm.dispose();
   }
 
@@ -419,6 +421,15 @@ export class GameRenderer {
     this.flash.visible = false;
     this.scene.add(this.flash);
 
+    const aimGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
+    this.aimLine = new THREE.Line(
+      aimGeo,
+      new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.36, depthWrite: false })
+    );
+    this.aimLine.frustumCulled = false;
+    this.aimLine.visible = false;
+    this.scene.add(this.aimLine);
+
     const RN = 1600;
     this.rainPos = new Float32Array(RN * 6);
     for (let i = 0; i < RN; i++) {
@@ -478,7 +489,7 @@ export class GameRenderer {
 
     this.gtaoPass = new GTAOPass(this.scene, this.camera, Math.max(256, Math.round(w * 0.6)), Math.max(256, Math.round(h * 0.6)));
     this.gtaoPass.output = GTAOPass.OUTPUT.Default;
-    this.gtaoPass.blendIntensity = 0.72;
+    this.gtaoPass.blendIntensity = 0.54;
     this.gtaoPass.updateGtaoMaterial({
       radius: 0.48,
       distanceExponent: 1.5,
@@ -505,7 +516,7 @@ export class GameRenderer {
       });
     };
 
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.18, 0.25, 1.15);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.24, 0.32, 1.12);
     this.rainLensPass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
@@ -593,7 +604,7 @@ export class GameRenderer {
     this.qualityMode = (this.qualityMode + 2) % 3; // 2 -> 1 -> 0 -> 2
     this.gtaoPass.enabled = this.qualityMode === 2;
     this.rainLensPass.enabled = this.qualityMode === 2;
-    this.reflectStrengthUniform.value = this.qualityMode === 2 ? 0.32 : 0;
+    this.reflectStrengthUniform.value = this.qualityMode === 2 ? 0.42 : 0;
     this.bloomEnabled = this.qualityMode >= 1;
     this.smaaPass.enabled = this.qualityMode >= 1;
     return this.qualityMode;

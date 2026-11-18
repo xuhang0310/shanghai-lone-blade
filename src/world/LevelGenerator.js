@@ -438,14 +438,27 @@ export class LevelState {
       markPropTile(tx, z);
     }
 
-    // Wooden telegraph poles with overhead sagging wires (1930s Shanghai streets)
+    // Wooden telegraph poles & 1930s Shanghai Plane Trees (法国梧桐)
     this.poles = [];
+    this.trees = [];
     if (!this.cfg.boss) {
       for (let z = 8; z < MH - 8; z += 9) {
         const tx = clamp(cxs[z] + 3, 2, MW - 3);
         if (this.T(tx, z) === 0 && !occupiedProp.has(`${tx},${z}`) && reach[z * MW + tx]) {
           this.poles.push({ x: (tx + 0.5) * TILE + 0.7, z: (z + 0.5) * TILE });
           markPropTile(tx, z);
+        }
+      }
+      if (this.cfg.style === 'cobble') {
+        for (let z = 7; z < MH - 7; z += 7) {
+          for (const side of [-1, 1]) {
+            const tx = clamp(cxs[z] + side * 3, 2, MW - 3);
+            if (this.T(tx, z) === 0 && !occupiedProp.has(`${tx},${z}`) && reach[z * MW + tx]) {
+              this.trees.push({ x: (tx + 0.5) * TILE + side * 0.45, z: (z + 0.5) * TILE, rotY: rnd(0, Math.PI * 2), scale: rnd(0.88, 1.15) });
+              markPropTile(tx, z);
+              break;
+            }
+          }
         }
       }
     }

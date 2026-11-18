@@ -80,6 +80,7 @@ let blastClouds = [];
 let shockwaves = [];
 let prevArmoryState = 'menu';
 let armorySlot = 0;
+let inspectGunIdx = 0;
 let bossConfronted = false;
 let reloadSpeakCd = 0;
 let execTarget = null;
@@ -843,18 +844,101 @@ function statPct(w) {
   return { dmgP, rofP, accP, magP };
 }
 
+function renderLoadoutStrip() {
+  const pills = [0, 1, 2]
+    .map(i => {
+      const idx = P.loadout[i];
+      const w = idx !== undefined ? WEAPONS[idx] : null;
+      return w
+        ? `<span class="loadout-pill"><em>0${i + 1}</em>${w.name}</span>`
+        : `<span class="loadout-pill" style="opacity:.45"><em>0${i + 1}</em>空槽</span>`;
+    })
+    .join('');
+  return `<div class="loadout-strip"><span>当前随身枪套：</span>${pills}</div>`;
+}
+
+function toggleGunEquip(idx) {
+  const curSlot = P.loadout.indexOf(idx);
+  if (curSlot !== -1) {
+    if (P.loadout.length <= 1) {
+      say('至少需保留一把随身火器');
+      return;
+    }
+    P.loadout.splice(curSlot, 1);
+    if (P.slot >= P.loadout.length) P.slot = P.loadout.length - 1;
+    armorySlot = Math.min(armorySlot, P.loadout.length);
+  } else if (P.loadout.length < 3) {
+    if (armorySlot < P.loadout.length) {
+      P.loadout[armorySlot] = idx;
+      P.slot = armorySlot;
+    } else {
+      P.loadout.push(idx);
+      P.slot = P.loadout.length - 1;
+      armorySlot = P.slot;
+    }
+  } else {
+    const rep = clamp(armorySlot, 0, 2);
+    P.loadout[rep] = idx;
+    P.slot = rep;
+  }
+  P.gun = P.loadout[P.slot];
+  inspectGunIdx = idx;
+  if (playerMesh) cf.setGun(playerMesh, WEAPONS[P.gun].modelKey);
+  audio.sfx('tick');
+  renderArmory();
+}
+
+function buildStageInnerHtml(idx) {
+  const fw = WEAPONS[idx] || WEAPONS[0];
+  const eqSlot = P.loadout.indexOf(idx);
+  const isEq = eqSlot !== -1;
+  const { dmgP, rofP, accP, magP } = statPct(fw);
+  const cutout = wf?.cutoutUrls?.[fw.modelKey] || wf?.previews?.[fw.modelKey] || '';
+  const resStr = P.res[idx] === Infinity ? '无限配给' : `${P.res[idx]} 发`;
+  const targetSlotNum = P.loadout.length < 3 && armorySlot >= P.loadout.length ? P.loadout.length + 1 : clamp(armorySlot, 0, 2) + 1;
+
+  return (
+    `<div class="stage-top">` +
+    `<div class="stage-name"><h3>${fw.fullName}</h3><span>${fw.caliber} · 弹匣 ${fw.mag} 发</span></div>` +
+    `<span class="stage-pill">${isEq ? `已携 · 0${eqSlot + 1} 号枪套` : '军械库待命'}</span>` +
+    `</div>` +
+    `<div class="stage-render-wrap">${cutout ? `<img class="stage-render" src="${cutout}" alt="${fw.fullName}">` : ''}</div>` +
+    `<div class="stage-desc">${fw.desc}</div>` +
+    `<div class="stage-stats">` +
+    `<div class="st-row"><span>威力</span><div class="stat-bar"><i style="width:${dmgP}%"></i></div><strong>${dmgP}</strong></div>` +
+    `<div class="st-row"><span>射速</span><div class="stat-bar"><i style="width:${rofP}%"></i></div><strong>${rofP}</strong></div>` +
+    `<div class="st-row"><span>精准</span><div class="stat-bar"><i style="width:${accP}%"></i></div><strong>${accP}</strong></div>` +
+    `<div class="st-row"><span>弹容</span><div class="stat-bar"><i style="width:${magP}%"></i></div><strong>${fw.mag}</strong></div>` +
+    `</div>` +
+    `<div class="stage-actions">` +
+    `<span class="stage-ammo">当前弹药：<b>${P.mags[idx]}</b> / ${resStr}</span>` +
+    `<button type="button" class="stage-act-btn${isEq ? ' unequip' : ''}" id="stageEquipBtn" data-gun="${idx}">` +
+    `${isEq ? `从 0${eqSlot + 1} 枪套卸下` : `装入 0${targetSlotNum} 号枪套`}` +
+    `</button>` +
+    `</div>`
+  );
+}
+
 function renderArmory() {
+  inspectGunIdx = clamp(inspectGunIdx ?? P.gun ?? 0, 0, WEAPONS.length - 1);
+  const slotRoles = ['主战位', '副战位', '机动位'];
+
   const slotHtml = [0, 1, 2]
     .map(i => {
       const wIdx = P.loadout[i];
       const w = wIdx !== undefined ? WEAPONS[wIdx] : null;
       const isActive = i === armorySlot;
       const resStr = w ? (P.res[wIdx] === Infinity ? '∞' : P.res[wIdx]) : '';
+      const thumb = w ? wf?.cutoutUrls?.[w.modelKey] || '' : '';
       return (
-        `<button type="button" class="slot-card${isActive ? ' active-slot' : ''}" data-slot="${i}">` +
-        `<span class="slot-num">0${i + 1}</span>` +
-        `<div class="slot-info"><b>${w ? w.name : '空槽位'}</b><span>${w ? `${P.mags[wIdx]}/${resStr} · 点击选定替换位` : '点击下方枪械放入此位'}</span></div>` +
-        `</button>`
+        `<div class="slot-card${isActive ? ' active-slot' : ''}" data-slot="${i}" role="button" tabindex="0">` +
+        `<div class="slot-num">0${i + 1}<small>${slotRoles[i]}</small></div>` +
+        `<div class="slot-thumb-wrap">${thumb ? `<img class="slot-thumb" src="${thumb}" alt="${w.name}">` : `<span style="font-size:11px;color:#667085">空枪套</span>`}</div>` +
+        `<div class="slot-info"><b>${w ? w.fullName : '空置枪套槽'}</b><span>${w ? `${w.caliber} · 弹药 ${P.mags[wIdx]}/${resStr}` : '点击下方任意火器装入此槽'}</span></div>` +
+        (w && P.loadout.length > 1
+          ? `<button type="button" class="slot-rm" data-rm-gun="${wIdx}" title="卸下此枪">卸下</button>`
+          : `<span style="font-size:10px;color:var(--lantern)">${isActive ? '替换位' : ''}</span>`) +
+        `</div>`
       );
     })
     .join('');
@@ -862,67 +946,77 @@ function renderArmory() {
   const gunHtml = WEAPONS.map((w, idx) => {
     const sIdx = P.loadout.indexOf(idx);
     const eq = sIdx !== -1;
-    const { dmgP, rofP, accP, magP } = statPct(w);
+    const isInsp = idx === inspectGunIdx;
     const prev = wf?.previews?.[w.modelKey] || '';
-    const resStr = P.res[idx] === Infinity ? '无限' : P.res[idx];
     return (
-      `<button type="button" class="gun-card${eq ? ' equipped' : ''}" data-gun="${idx}">` +
-      `<div class="gun-top"><b>${w.fullName}</b>${eq ? `<span class="gun-badge">槽位 0${sIdx + 1}</span>` : ''}</div>` +
+      `<button type="button" class="gun-card${eq ? ' equipped' : ''}${isInsp ? ' inspecting' : ''}" data-gun="${idx}">` +
+      `<div class="gun-top"><b>${w.fullName}</b>${eq ? `<span class="gun-badge">0${sIdx + 1} 号位</span>` : ''}</div>` +
       (prev ? `<img class="gun-prev" src="${prev}" alt="${w.fullName}">` : '') +
-      `<div class="gun-cal">${w.caliber} · 备弹 ${resStr}</div>` +
-      `<div class="gun-desc">${w.desc}</div>` +
-      `<div class="stat-grid">` +
-      `<span>威力</span><div class="stat-bar"><i style="width:${dmgP}%"></i></div>` +
-      `<span>射速</span><div class="stat-bar"><i style="width:${rofP}%"></i></div>` +
-      `<span>精准</span><div class="stat-bar"><i style="width:${accP}%"></i></div>` +
-      `<span>弹容</span><div class="stat-bar"><i style="width:${magP}%"></i></div>` +
-      `</div></button>`
+      `<div class="gun-meta"><span>${w.caliber}</span><em>弹匣 ${w.mag} 发</em></div>` +
+      `</button>`
     );
   }).join('');
 
   armoryEl.innerHTML =
     `<div class="armory-panel">` +
-    `<div class="armory-hdr"><div><h2>上海军械装备箱</h2><div class="armory-sub">从八款民国制式火器中任选 <b>最多 3 把</b> 随身携带（点击已装备可卸下，点击未装备填入或替换当前选中槽位）</div></div>` +
-    `<button type="button" class="btn-sec" id="armCloseTop">确认出战 [Esc/B]</button></div>` +
-    `<div class="slot-bar">${slotHtml}</div>` +
+    `<div class="armory-hdr">` +
+    `<div class="armory-title-wrap"><span class="armory-kicker">SHANGHAI 1937 · TACTICAL ARMORY</span><h2>民国制式军械装备箱</h2>` +
+    `<div class="armory-sub">悬停检视枪械工艺参数 · 点击火器装入或卸下（随身最多携带 <b>3 把</b> 火器）</div></div>` +
+    `<button type="button" class="btn-sec" id="armCloseTop">返回行动 [B / Esc]</button></div>` +
+    `<div class="armory-hero">` +
+    `<div class="gun-stage" id="gunStageBox">${buildStageInnerHtml(inspectGunIdx)}</div>` +
+    `<div class="holster-col">` +
+    `<div class="holster-lbl">随身三格战术枪套 <span>已携 ${P.loadout.length} / 3 把 · 点击槽位指定替换目标</span></div>` +
+    `${slotHtml}</div>` +
+    `</div>` +
+    `<div class="arsenal-hdr">八款 1930 年代经典实感火器库 <span>点击直接装配 / 替换至右侧选中枪套</span></div>` +
     `<div class="gun-grid">${gunHtml}</div>` +
-    `<div class="armory-ftr"><button type="button" class="go" id="armConfirm">携带所选三把火器出发</button></div>` +
+    `<div class="armory-ftr"><span class="armory-tip">提示：战斗中可随时按 [1][2][3] 或 [Q] 切换火器，按 [B] 重新调配军械箱</span>` +
+    `<button type="button" class="go" id="armConfirm">携此三把火器投入战斗</button></div>` +
     `</div>`;
 
-  armoryEl.querySelectorAll('.slot-card').forEach(btn => {
-    btn.onclick = () => {
-      armorySlot = +btn.dataset.slot;
+  const bindStageBtn = () => {
+    const sb = document.getElementById('stageEquipBtn');
+    if (sb) sb.onclick = () => toggleGunEquip(+sb.dataset.gun);
+  };
+  bindStageBtn();
+
+  armoryEl.querySelectorAll('.slot-card').forEach(card => {
+    card.onclick = ev => {
+      if (ev.target.closest('.slot-rm')) return;
+      const s = +card.dataset.slot;
+      armorySlot = s;
+      if (P.loadout[s] !== undefined) {
+        P.slot = s;
+        P.gun = P.loadout[s];
+        inspectGunIdx = P.gun;
+        if (playerMesh) cf.setGun(playerMesh, WEAPONS[P.gun].modelKey);
+      }
       audio.sfx('tick');
       renderArmory();
     };
   });
 
-  armoryEl.querySelectorAll('.gun-card').forEach(btn => {
-    btn.onclick = () => {
-      const idx = +btn.dataset.gun;
-      const curSlot = P.loadout.indexOf(idx);
-      if (curSlot !== -1) {
-        if (P.loadout.length <= 1) {
-          say('至少需保留一把随身火器');
-          return;
-        }
-        P.loadout.splice(curSlot, 1);
-        if (P.slot >= P.loadout.length) P.slot = P.loadout.length - 1;
-        armorySlot = Math.min(armorySlot, P.loadout.length - 1);
-      } else if (P.loadout.length < 3) {
-        P.loadout.push(idx);
-        P.slot = P.loadout.length - 1;
-        armorySlot = P.slot;
-      } else {
-        const rep = clamp(armorySlot, 0, 2);
-        P.loadout[rep] = idx;
-        P.slot = rep;
-      }
-      P.gun = P.loadout[P.slot];
-      if (playerMesh) cf.setGun(playerMesh, WEAPONS[P.gun].modelKey);
-      audio.sfx('tick');
-      renderArmory();
+  armoryEl.querySelectorAll('.slot-rm').forEach(rmBtn => {
+    rmBtn.onclick = ev => {
+      ev.stopPropagation();
+      toggleGunEquip(+rmBtn.dataset.rmGun);
     };
+  });
+
+  armoryEl.querySelectorAll('.gun-card').forEach(btn => {
+    btn.onmouseenter = () => {
+      const idx = +btn.dataset.gun;
+      if (inspectGunIdx === idx) return;
+      inspectGunIdx = idx;
+      armoryEl.querySelectorAll('.gun-card').forEach(c => c.classList.toggle('inspecting', +c.dataset.gun === idx));
+      const stageBox = document.getElementById('gunStageBox');
+      if (stageBox) {
+        stageBox.innerHTML = buildStageInnerHtml(idx);
+        bindStageBtn();
+      }
+    };
+    btn.onclick = () => toggleGunEquip(+btn.dataset.gun);
   });
 
   document.getElementById('armCloseTop').onclick = closeArmory;
@@ -936,6 +1030,8 @@ function openArmory() {
   }
   prevArmoryState = state;
   state = 'armory';
+  inspectGunIdx = P.gun || 0;
+  armorySlot = P.slot || 0;
   ui.hidden = true;
   armoryEl.hidden = false;
   input.mouse.down = input.mouse.right = false;
@@ -946,18 +1042,26 @@ function openArmory() {
 function closeArmory() {
   if (state !== 'armory') return;
   armoryEl.hidden = true;
-  state = prevArmoryState || 'menu';
-  if (state === 'play') {
+  const target = prevArmoryState || 'menu';
+  if (target === 'play') {
+    state = 'play';
     ui.hidden = true;
     input.lockPointer();
+  } else if (target === 'menu') {
+    menu();
+  } else if (target === 'pause') {
+    state = 'play';
+    togglePause();
   } else {
+    state = target;
     ui.hidden = false;
   }
 }
 
 function panel(html, btn, cb, armBtn = false) {
-  const sec = armBtn ? '<button class="btn-sec" id="armOpenBtn" type="button">军械装备箱（选枪预览 · 最多3把）</button>' : '';
-  ui.innerHTML = `<div class="panel">${html}${sec}<button class="go" id="goBtn" type="button">${btn}</button></div>`;
+  const rowCls = armBtn ? 'btn-row' : 'btn-row single';
+  const sec = armBtn ? '<button class="btn-sec" id="armOpenBtn" type="button">军械装备箱 · 选配三把火器</button>' : '';
+  ui.innerHTML = `<div class="panel">${html}<div class="${rowCls}">${sec}<button class="go" id="goBtn" type="button">${btn}</button></div></div>`;
   ui.hidden = false;
   input.exitPointerLock();
   const b = document.getElementById('goBtn');
@@ -970,14 +1074,21 @@ function panel(html, btn, cb, armBtn = false) {
 function menu() {
   state = 'menu';
   panel(
-    '<div class="sub">Shanghai · 1937</div><h1>沪上孤枪</h1>' +
-    '<p>黑龙帮盘踞闸北，码头夜夜卸下军火。<b>八款民国火器任选三把，一人穿巷过街，了结帮主“黑龙”。</b></p>' +
-    '<div class="keys"><span>WASD · C · 空格</span><span>移动（含实感脚步声）· 蹲伏潜行 · 跳跃</span><span>鼠标左 / 右键</span><span>精准开火 · 长按右键肩射精准瞄准</span><span>E · G · F</span><span>近身处决/背后暗杀 · 手雷 · 燃烧瓶</span>' +
-    '<span>1 2 3 / Q · B</span><span>切换三把随身火器 · 打开八枪军械装备栏</span><span>Tab / V · 右键+Shift</span><span>子弹时间（0.28x 慢镜）· 飞身鱼跃慢镜射击</span><span>R · P · M · H</span><span>换弹 · 暂停 · 暗黑风潮氛围声 · 画质切换</span>' +
-    '<span>触屏</span><span>左半屏移动，右半屏滑动转向，点击军械/处决按钮操作</span></div>' +
-    (best ? `<p>最高分 <b>${best}</b></p>` : '') +
-    '<p class="credit">引擎：Three.js r187 + Rapier3D WASM 物理引擎<br>模型与贴图：Poly Haven、OpenGameArt（CC0）　枪声：The Free Firearm Sound Library + WebAudio 物理混响</p>',
-    '开 始',
+    '<div class="sub">SHANGHAI · 1937 · RAIN NOIR</div><h1>沪上孤枪</h1>' +
+    '<div class="deco-rule">◆ 孤 胆 夜 袭 · 十 里 洋 场 ◆</div>' +
+    '<p>黑龙帮盘踞闸北与十六铺，雨夜秘密卸运军火。<b>从八款民国制式火器中精挑三把入套，穿街过巷，手刃帮主“黑龙”。</b></p>' +
+    renderLoadoutStrip() +
+    '<div class="key-grid">' +
+    '<div class="key-item"><b>WASD · C · 空格</b><span>街巷战术移动 · 蹲伏潜行 · 翻跃掩体</span></div>' +
+    '<div class="key-item"><b>左键射击 · 右键肩射</b><span>实感弹道击发 · 长按右键越肩精准瞄准</span></div>' +
+    '<div class="key-item"><b>[1][2][3] / Q · [B] 军械箱</b><span>三格装备栏秒切火器 · 打开八枪预览军械箱</span></div>' +
+    '<div class="key-item"><b>[E] 处决 · [G] 手雷 · [F] 燃烧瓶</b><span>悄声暗杀/近身处决 · 破片爆破 · 烈焰封路</span></div>' +
+    '<div class="key-item"><b>[Tab] 专注 · 右键+Shift</b><span>开启 0.28x 子弹时间 · 飞身鱼跃慢镜射击</span></div>' +
+    '<div class="key-item"><b>[R] 换弹 · [H] 画质 · [M] 氛围</b><span>战术换弹 · 三档渲染切换 · 雨夜低频声场</span></div>' +
+    '</div>' +
+    (best ? `<p>最高战功纪录 <b>${best}</b></p>` : '') +
+    '<p class="credit">Three.js r187 PBR 渲染管线 + Rapier3D 刚体物理引擎 · 实录火器声学卷积混响</p>',
+    '踏 入 雨 夜',
     newGame,
     true
   );
@@ -987,10 +1098,13 @@ function gameOver() {
   state = 'over';
   saveBest();
   panel(
-    `<h2>${overMsg ? '任务失败' : '壮烈牺牲'}</h2><p>${overMsg || `你倒在了${level.cfg.name.split('· ')[1]}。上海的夜还很长。`}</p>` +
-    `<div class="stats"><div><b>${score}</b>得分</div><div><b>${best}</b>最高分</div></div>`,
-    '再来一次',
-    newGame
+    `<div class="sub">MISSION FAILED</div><h2>${overMsg ? '行动受挫' : '血染十里洋场'}</h2>` +
+    `<div class="deco-rule">◆ 1937 ◆</div>` +
+    `<p>${overMsg || `你倒在了${level.cfg.name.split('· ')[1]}的冷雨中。外滩的夜色依旧深沉。`}</p>` +
+    `<div class="stats"><div><b>${score}</b>本局战功</div><div><b>${best}</b>最高纪录</div></div>`,
+    '重 返 街 头',
+    newGame,
+    true
   );
 }
 
@@ -1003,17 +1117,23 @@ function levelClear() {
     state = 'win';
     saveBest();
     panel(
-      '<div class="sub">The End</div><h2>黑龙伏诛</h2><p>货仓的火烧了一夜。天亮时，码头上再没有黑龙帮的旗。</p>' +
-      `<div class="stats"><div><b>${score}</b>总分</div><div><b>${best}</b>最高分</div></div>`,
-      '重新开始',
-      newGame
+      '<div class="sub">FINALE · SHANGHAI DAWN</div><h2>黑龙伏诛</h2>' +
+      '<div class="deco-rule">◆ 尘 埃 落 定 ◆</div>' +
+      '<p>总栈的大火映红了黄浦江面。黎明破晓时，十六铺再无黑龙帮的旗号。</p>' +
+      `<div class="stats"><div><b>${score}</b>最终战功</div><div><b>${best}</b>传奇纪录</div></div>`,
+      '再 战 江 湖',
+      newGame,
+      true
     );
     return;
   }
   state = 'clear';
   panel(
-    `<h2>${level.cfg.name.split('· ')[1]} 已肃清</h2><p>歼敌 <b>${kills} / ${level.totalEnemies}</b>　过关奖励 <b>+${bonus}</b></p><p>${LEVELS[lvl + 1].intro}</p>`,
-    '下一关',
+    `<div class="sub">SECTOR CLEARED</div><h2>${level.cfg.name.split('· ')[1]} 已肃清</h2>` +
+    `<p>歼敌 <b>${kills} / ${level.totalEnemies}</b>　战功嘉奖 <b>+${bonus}</b></p>` +
+    renderLoadoutStrip() +
+    `<p>${LEVELS[lvl + 1].intro}</p>`,
+    '奔 赴 下 一 战 区',
     () => {
       lvl++;
       P.hp = Math.min(100, P.hp + 35);
@@ -1032,8 +1152,8 @@ function togglePause() {
   if (state === 'play') {
     state = 'pause';
     panel(
-      `<h2>暂停</h2><p>${level.cfg.name}</p>`,
-      '继续',
+      `<div class="sub">TACTICAL PAUSE</div><h2>行动暂停</h2><p>${level.cfg.name}</p>` + renderLoadoutStrip(),
+      '继 续 作 战',
       () => {
         state = 'play';
         ui.hidden = true;
@@ -1747,14 +1867,15 @@ function syncScene(dt) {
 
   P.updateCamera(gr.camera, gr.baseFov, state, time, muzzle, shake, physics);
 
-  // Lights & thunderstorm double-pulse lightning (restrained Film-Noir exposure)
+  // High-contrast AAA moonlit night calibration (crystal-clear street visibility without wet mirror glare)
   const lf = lightningFlash;
   const pulse = lf > 0 ? (lf > 0.65 ? Math.sin(((lf - 0.65) / 0.35) * Math.PI) : lf < 0.5 ? Math.sin((lf / 0.5) * Math.PI) * 0.65 : 0.15) : 0;
-  gr.sun.intensity = 1.35 + pulse * 3.6;
-  gr.hemi.intensity = 0.58 + pulse * 0.75;
+  gr.sun.intensity = 2.4 + pulse * 4.2;
+  gr.hemi.intensity = 1.42 + pulse * 0.9;
   gr.sun.position.set(P.x + 24, 46, P.z + 16);
   gr.sun.target.position.set(P.x, 0, P.z);
   gr.moon.position.set(gr.camera.position.x + 110, 95, gr.camera.position.z - 230);
+  gr.playerFill.position.set(P.x - Math.cos(P.ang) * 1.1, P.y + 2.45, P.z - Math.sin(P.ang) * 1.1);
 
   lampT -= dt;
   if (lampT <= 0) {
@@ -1765,7 +1886,7 @@ function syncScene(dt) {
     if (near[0]) {
       gr.heroSpot.position.set(near[0].lx, near[0].ly - 0.15, near[0].lz);
       gr.heroSpot.target.position.set(near[0].lx, 0, near[0].lz);
-      gr.heroSpot.intensity = 13;
+      gr.heroSpot.intensity = 22;
     } else {
       gr.heroSpot.intensity = 0;
     }
@@ -1773,7 +1894,7 @@ function syncScene(dt) {
       const l = near[i];
       if (l) {
         gr.lampLights[i].position.set(l.lx, l.ly - 0.25, l.lz);
-        gr.lampLights[i].intensity = i === 0 ? 2.5 : 9.5;
+        gr.lampLights[i].intensity = i === 0 ? 4.5 : 15;
       } else {
         gr.lampLights[i].intensity = 0;
       }
@@ -1784,13 +1905,34 @@ function syncScene(dt) {
     const c = Math.cos(P.ang);
     const s = Math.sin(P.ang);
     const tip = 0.75 + (WEAPON_TIPS[WEAPONS[P.gun].modelKey] || 0.34);
+    const muzX = P.x + c * tip - s * 0.2;
+    const muzY = P.y + 1.38 - 0.42 * (P.crouchK || 0);
+    const muzZ = P.z + s * tip + c * 0.2;
     gr.flash.visible = muzzle > 0.45 && state === 'play';
-    gr.flash.position.set(P.x + c * tip - s * 0.2, P.y + 1.4, P.z + s * tip + c * 0.2);
+    gr.flash.position.set(muzX, muzY, muzZ);
     gr.flash.scale.setScalar(rnd(0.75, 1.18));
     muzzle = Math.max(0, muzzle - dt * 14);
     gr.muzzleLight.intensity = muzzle * 20;
     gr.muzzleLight.position.set(P.x + c * 1.25, P.y + 1.5, P.z + s * 1.25);
     gr.boomLight.intensity = Math.max(0, gr.boomLight.intensity - dt * 380);
+
+    // Surgical Right-Click ADS 3D ballistic sightline
+    if (state === 'play' && P.ads > 0.2 && P.rollT <= 0 && P.execT <= 0 && P.reloadT <= 0) {
+      const aimPt = P.aim3D(gr.camera, physics);
+      const posArr = gr.aimLine.geometry.attributes.position.array;
+      posArr[0] = muzX;
+      posArr[1] = muzY;
+      posArr[2] = muzZ;
+      posArr[3] = aimPt.x;
+      posArr[4] = aimPt.y;
+      posArr[5] = aimPt.z;
+      gr.aimLine.geometry.attributes.position.needsUpdate = true;
+      gr.aimLine.material.color.setHex(aimPt.hit ? 0xff4e3e : 0xffda88);
+      gr.aimLine.material.opacity = 0.34 * P.ads;
+      gr.aimLine.visible = true;
+    } else {
+      gr.aimLine.visible = false;
+    }
   }
 
   // Rain follows camera
@@ -1837,6 +1979,7 @@ function frame(ts) {
     camera: gr.camera,
     input,
     score,
+    kills,
     banner,
     msg,
     msgT,
@@ -1855,7 +1998,8 @@ function frame(ts) {
     planted,
     bloomEnabled: gr.bloomEnabled,
     qualityLabel: gr.getQualityLabel(),
-    exitOpen: exitOpen()
+    exitOpen: exitOpen(),
+    hudIcons: wf?.hudIcons
   });
   requestAnimationFrame(frame);
 }

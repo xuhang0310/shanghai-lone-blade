@@ -31,7 +31,7 @@ export class PlayerController {
     this.z = 0;
     this.vy = 0;
     this.ang = -Math.PI / 2;
-    this.pitch = 0.2;
+    this.pitch = 0.05;
     this.hp = 100;
     this.armor = 0;
     this.loadout = savedLoadout;
@@ -74,7 +74,7 @@ export class PlayerController {
     this.z = z;
     this.vy = 0;
     this.ang = -Math.PI / 2;
-    this.pitch = 0.2;
+    this.pitch = 0.05;
     this.crouch = false;
     this.crouchK = 0;
     this.air = false;
@@ -288,11 +288,11 @@ export class PlayerController {
     const cp = Math.cos(pe);
     const spv = Math.sin(pe);
 
-    // Shoulder position with wall occlusion check (tighter over-shoulder on Precision ADS)
-    const shoulderOff = 0.82 - 0.24 * this.ads;
+    // Shoulder position with wall occlusion check (tight cinema over-the-shoulder framing)
+    const shoulderOff = 0.68 - 0.22 * this.ads;
     const targetSx = this.x - s * shoulderOff;
     const targetSz = this.z + c * shoulderOff;
-    const shoulderY = this.camY + 1.75 - 0.5 * this.crouchK;
+    const shoulderY = this.camY + 1.62 - 0.46 * this.crouchK;
     let sx = targetSx;
     let sz = targetSz;
     const shRay = physics.castRay(
@@ -302,17 +302,17 @@ export class PlayerController {
       targetSx - this.x,
       0,
       targetSz - this.z,
-      0.92,
+      0.85,
       GROUP_WORLD,
       physics.playerCollider
     );
-    if (shRay && shRay.dist < 0.85) {
-      const k = Math.max(0.15, (shRay.dist - 0.15) / 0.85);
+    if (shRay && shRay.dist < 0.78) {
+      const k = Math.max(0.15, (shRay.dist - 0.15) / 0.78);
       sx = this.x + (targetSx - this.x) * k;
       sz = this.z + (targetSz - this.z) * k;
     }
 
-    const dmax = Math.max(1.2, 4.55 - 2.45 * this.ads - (this.execT > 0 ? 1.35 : 0));
+    const dmax = Math.max(1.15, 3.25 - 1.75 * this.ads - (this.execT > 0 ? 1.15 : 0));
     const backDx = -c * cp;
     const backDy = spv;
     const backDz = -s * cp;

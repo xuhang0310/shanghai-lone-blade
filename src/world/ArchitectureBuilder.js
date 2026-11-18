@@ -573,14 +573,18 @@ export class ArchitectureBuilder {
               }
               continue;
             }
-            if (roll < 0.54) {
+            if (roll < 0.5) {
               posters[posterIdx++ % 3].push([px, 1.56 + rnd(-0.12, 0.12), pz, ry]);
               continue;
             }
+            // Ground-floor warm shopfront vitrine + awning
+            wins.push([px, 1.72, pz, ry, Math.random() < 0.68]);
+            if (Math.random() < 0.45) awnings.push([px, 2.95, pz, ry]);
+            continue;
           }
           const wy = fl * floorH + 1.85;
-          wins.push([px, wy, pz, ry, Math.random() < 0.36]);
-          if (!r.border && fl === 1 && cfg.style === 'cobble' && Math.random() < 0.32) {
+          wins.push([px, wy, pz, ry, Math.random() < 0.48]);
+          if (!r.border && fl === 1 && cfg.style === 'cobble' && Math.random() < 0.36) {
             balconies.push([px, fl * floorH + 0.08, pz, ry]);
           }
         }
@@ -589,20 +593,18 @@ export class ArchitectureBuilder {
       for (let i = 0; i < r.w; i++) { side(r.x + i, r.y, 0, -1); side(r.x + i, r.y + r.h - 1, 0, 1); }
       for (let j = 0; j < r.h; j++) { side(r.x, r.y + j, -1, 0); side(r.x + r.w - 1, r.y + j, 1, 0); }
 
-      // 3D Neon Signboards (horizontal or vertical hanging)
-      if (!r.border && r.w >= 2 && level.T(r.x + (r.w >> 1), r.y + r.h) !== 1 && Math.random() < 0.78) {
-        const signSpec = SHANGHAI_SIGNS[(Math.random() * SHANGHAI_SIGNS.length) | 0];
-        const vertical = Math.random() < 0.42;
-        this._buildNeonSign(
-          worldGroup,
-          signSpec.text,
-          signSpec.color,
-          cx,
-          vertical ? 4.3 : 3.45,
-          (r.y + r.h) * TILE,
-          bw,
-          vertical
-        );
+      // 3D Neon Signboards on ALL street-facing facades (East, West, South & North!)
+      if (!r.border) {
+        const tryFacadeSign = (wx, wz, spanM, openCheck, ry, prob) => {
+          if (spanM < 5.0 || !openCheck || Math.random() > prob) return;
+          const signSpec = SHANGHAI_SIGNS[(Math.random() * SHANGHAI_SIGNS.length) | 0];
+          const vertical = Math.random() < 0.58;
+          this._buildNeonSign(worldGroup, signSpec.text, signSpec.color, wx, vertical ? 4.4 : 3.45, wz, spanM, vertical, ry);
+        };
+        tryFacadeSign(cx, (r.y + r.h) * TILE, bw, level.T(r.x + (r.w >> 1), r.y + r.h) === 0, 0, 0.78);
+        tryFacadeSign(cx, r.y * TILE, bw, level.T(r.x + (r.w >> 1), r.y - 1) === 0, Math.PI, 0.55);
+        tryFacadeSign((r.x + r.w) * TILE, cz, bd, level.T(r.x + r.w, r.y + (r.h >> 1)) === 0, Math.PI / 2, 0.82);
+        tryFacadeSign(r.x * TILE, cz, bd, level.T(r.x - 1, r.y + (r.h >> 1)) === 0, -Math.PI / 2, 0.82);
       }
     }
 
@@ -732,53 +734,58 @@ export class ArchitectureBuilder {
     }
   }
 
-  _buildNeonSign(worldGroup, text, col, cx, cy, wallZ, bw, vertical) {
+  _buildNeonSign(worldGroup, text, col, wx, cy, wz, spanW, vertical, ry = 0) {
     const tex = makeSignTexture(text, col, vertical);
     const faceMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
     faceMat.userData.own = true;
     faceMat.userData.ownMap = true;
 
     const grp = new THREE.Group();
-    const w = vertical ? 0.92 : Math.min(bw - 0.5, 3.3);
-    const h = vertical ? 2.65 : w * 0.31;
+    grp.position.set(wx, cy, wz);
+    grp.rotation.y = ry;
+
+    const inner = new THREE.Group();
+    grp.add(inner);
+    const w = vertical ? 0.96 : Math.min(spanW - 0.5, 3.4);
+    const h = vertical ? 2.75 : w * 0.31;
 
     if (vertical) {
-      // Protrudes outward from facade with two iron support struts
-      grp.position.set(cx + rnd(-bw * 0.25, bw * 0.25), cy, wallZ + 0.85);
+      // Protrudes outward (+Z in facade local space) with two iron support struts
+      inner.position.set(rnd(-spanW * 0.22, spanW * 0.22), 0, 0.88);
       const box = new THREE.Mesh(this.gr.G.box, this.gr.M.dark);
       box.scale.set(0.18, h + 0.12, w + 0.12);
-      grp.add(box);
+      inner.add(box);
       for (const side of [-1, 1]) {
         const f = new THREE.Mesh(this.gr.G.plane, faceMat);
         f.scale.set(w, h, 1);
         f.position.x = side * 0.1;
         f.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
-        grp.add(f);
+        inner.add(f);
       }
       for (const oy of [-h * 0.34, h * 0.34]) {
         const arm = new THREE.Mesh(this.gr.G.box, this.mats.steelBeam);
-        arm.scale.set(0.06, 0.06, 0.9);
-        arm.position.set(0, oy, -0.45);
-        grp.add(arm);
+        arm.scale.set(0.06, 0.06, 0.92);
+        arm.position.set(0, oy, -0.46);
+        inner.add(arm);
       }
     } else {
-      grp.position.set(cx, cy, wallZ + 0.22);
+      inner.position.set(0, 0, 0.22);
       const box = new THREE.Mesh(this.gr.G.box, this.gr.M.dark);
       box.scale.set(w + 0.14, h + 0.14, 0.22);
-      grp.add(box);
+      inner.add(box);
       const f = new THREE.Mesh(this.gr.G.plane, faceMat);
       f.scale.set(w, h, 1);
       f.position.z = 0.12;
-      grp.add(f);
+      inner.add(f);
     }
 
     const gl = new THREE.Sprite(this.gr.M.glowSprite.clone());
     gl.material.color.set(col);
-    gl.material.opacity = 0.38;
+    gl.material.opacity = 0.28;
     gl.material.userData.own = true;
-    gl.scale.set(vertical ? 2.4 : w * 1.75, vertical ? 3.2 : 2.5, 1);
-    gl.position.z = vertical ? 0 : 0.35;
-    grp.add(gl);
+    gl.scale.set(vertical ? 2.1 : w * 1.5, vertical ? 2.8 : 2.1, 1);
+    gl.position.z = vertical ? 0 : 0.32;
+    inner.add(gl);
 
     worldGroup.add(grp);
   }
