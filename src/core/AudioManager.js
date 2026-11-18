@@ -386,6 +386,15 @@ export class AudioManager {
         this.tone(2400, 680, 0.09, 0.18, 'triangle');
         this.tone(118, 34, 0.22, 0.48, 'sine');
         break;
+      case 'execFreeze':
+        this.noise(0.045, 3600, 2.5, 0.36, 'highpass');
+        this.tone(185, 28, 0.42, 0.65, 'sine');
+        this.tone(2450, 1780, 0.34, 0.14, 'triangle');
+        break;
+      case 'execRelease':
+        this.noise(0.38, 220, 0.55, 0.72, 'lowpass');
+        this.tone(92, 21, 0.38, 0.68, 'sine');
+        break;
       case 'execFinisher':
         this.noise(0.12, 1600, 0.9, 0.48, 'bandpass');
         this.noise(0.55, 210, 0.5, 0.76, 'lowpass');

@@ -98,48 +98,12 @@ export class HudRenderer {
       }
     }
 
-    // God-of-War Visceral Execution Screen FX (Radial Speed-Lines + Crimson-Gold Impact Flash + Anamorphic Bars)
-    if (execFX && (execFX.k > 0.01 || execFX.flash > 0.01)) {
-      if (execFX.flash > 0.01) {
-        const fa = clamp(execFX.flash, 0, 1);
-        const fg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.16, w / 2, h / 2, Math.max(w, h) * 0.68);
-        fg.addColorStop(0, `rgba(255, 238, 195, ${fa * 0.22})`);
-        fg.addColorStop(0.55, `rgba(220, 48, 32, ${fa * 0.28})`);
-        fg.addColorStop(1, `rgba(165, 22, 16, ${fa * 0.58})`);
-        ctx.fillStyle = fg;
-        ctx.fillRect(0, 0, w, h);
-      }
-      if (execFX.dash > 0.02 || execFX.flash > 0.08) {
-        const intensity = Math.max(execFX.dash || 0, (execFX.flash || 0) * 0.85);
-        const cx0 = w * 0.5;
-        const cy0 = h * 0.5;
-        const rIn = Math.min(w, h) * 0.34;
-        const rOut = Math.max(w, h) * 0.72;
-        ctx.save();
-        ctx.strokeStyle = `rgba(255, 220, 152, ${intensity * 0.34})`;
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        for (let i = 0; i < 28; i++) {
-          const a0 = (i / 28) * TAU + Math.sin(i * 7.3) * 0.06;
-          const r1 = rIn + ((i * 19) % 7) * 14;
-          ctx.moveTo(cx0 + Math.cos(a0) * r1, cy0 + Math.sin(a0) * r1);
-          ctx.lineTo(cx0 + Math.cos(a0) * rOut, cy0 + Math.sin(a0) * rOut);
-        }
-        ctx.stroke();
-        ctx.restore();
-      }
-      if (execFX.k > 0.02) {
-        const barH = Math.round(32 * clamp(execFX.k, 0, 1));
-        ctx.fillStyle = 'rgba(4, 6, 12, 0.92)';
-        ctx.fillRect(0, 0, w, barH);
-        ctx.fillRect(0, h - barH, w, barH);
-        ctx.fillStyle = `rgba(229, 179, 82, ${0.45 * execFX.k})`;
-        ctx.fillRect(0, barH - 1, w, 1);
-        ctx.fillRect(0, h - barH, w, 1);
-      }
-    }
+    // Cinema Execution Close-Up & Freeze-Frame Overlay (pre-HUD layer)
+    const hudAlpha = clamp(1 - (execFX?.k || 0) * 1.45, 0, 1);
 
     // 2. Top-Left 1937 Art-Deco Vital & Mission Plaque
+    ctx.save();
+    ctx.globalAlpha = hudAlpha;
     ctx.textBaseline = 'alphabetic';
     const px = 16;
     const py = 16;
@@ -601,7 +565,7 @@ export class HudRenderer {
     if (state === 'play' && P.execT <= 0) {
       for (const e of level.enemies) {
         if (e.hp <= 0 || e === execTarget) continue;
-        if ((e.staggerT || 0) <= 0) continue;
+        if ((e.finisherT || 0) <= 0 && (e.staggerT || 0) <= 0) continue;
         if (Math.hypot(e.x - P.x, e.z - P.z) > 20) continue;
         _tmpV.set(e.x, e.ht + 0.52, e.z).project(camera);
         if (_tmpV.z <= -1 || _tmpV.z >= 1) continue;
@@ -846,6 +810,164 @@ export class HudRenderer {
       ctx.beginPath();
       ctx.arc(x, y, P.ads > 0.35 ? 1.6 : 1.8, 0, TAU);
       ctx.fill();
+    }
+    ctx.restore(); // End routine HUD alpha wrapper
+
+    // 11. Master Cinema Close-Up & Stylized Noir Freeze-Frame Tableau (rendered cleanly ABOVE hidden HUD!)
+    if (execFX && (execFX.k > 0.01 || execFX.flash > 0.01 || execFX.freeze > 0.01)) {
+      const fk = clamp(execFX.freeze || 0, 0, 1);
+      const fa = clamp(execFX.flash || 0, 0, 1);
+      const ek = clamp(execFX.k || 0, 0, 1);
+
+      // Projected 3D Muzzle / Blade Impact Point on screen
+      let ix = w * 0.52;
+      let iy = h * 0.46;
+      if (execFX.impactPos) {
+        _tmpV.set(execFX.impactPos.x, execFX.impactPos.y, execFX.impactPos.z).project(camera);
+        if (_tmpV.z > -1 && _tmpV.z < 1) {
+          ix = clamp((_tmpV.x * 0.5 + 0.5) * w, w * 0.15, w * 0.85);
+          iy = clamp((-_tmpV.y * 0.5 + 0.5) * h, h * 0.18, h * 0.82);
+        }
+      }
+
+      // High-contrast Noir Chiaroscuro Freeze-Frame Rim & Crimson-Gold Flash
+      if (fk > 0.01 || fa > 0.01) {
+        const rimG = ctx.createRadialGradient(ix, iy, Math.min(w, h) * 0.14, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
+        rimG.addColorStop(0, `rgba(255, 244, 214, ${fa * 0.24})`);
+        rimG.addColorStop(0.45, `rgba(210, 42, 28, ${fa * 0.18 + fk * 0.10})`);
+        rimG.addColorStop(1, `rgba(6, 4, 10, ${fk * 0.62 + fa * 0.32})`);
+        ctx.fillStyle = rimG;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // Anamorphic Horizontal Cinema Lens-Flare + 4-Point Razor Star right on Muzzle / Blade!
+      if (fk > 0.02 || fa > 0.12) {
+        const starA = clamp(Math.max(fk * 0.95, fa * 0.85), 0, 1);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        // Horizontal 35mm Anamorphic Streak
+        const streakW = Math.min(w * 0.42, 380);
+        const hGrad = ctx.createLinearGradient(ix - streakW, iy, ix + streakW, iy);
+        hGrad.addColorStop(0, 'rgba(255, 190, 95, 0)');
+        hGrad.addColorStop(0.42, `rgba(255, 214, 138, ${starA * 0.42})`);
+        hGrad.addColorStop(0.5, `rgba(255, 250, 232, ${starA * 0.92})`);
+        hGrad.addColorStop(0.58, `rgba(255, 214, 138, ${starA * 0.42})`);
+        hGrad.addColorStop(1, 'rgba(255, 190, 95, 0)');
+        ctx.fillStyle = hGrad;
+        ctx.fillRect(ix - streakW, iy - 2.5, streakW * 2, 5);
+
+        // Diagonal Cross-Slash Needle Rays
+        for (const ang of [-0.42, 1.15]) {
+          ctx.save();
+          ctx.translate(ix, iy);
+          ctx.rotate(ang);
+          const dLen = execFX.stealth ? 150 : 115;
+          const dGrad = ctx.createLinearGradient(-dLen, 0, dLen, 0);
+          dGrad.addColorStop(0, 'rgba(255,220,160,0)');
+          dGrad.addColorStop(0.5, execFX.stealth ? `rgba(230,245,255,${starA * 0.85})` : `rgba(255,235,180,${starA * 0.78})`);
+          dGrad.addColorStop(1, 'rgba(255,220,160,0)');
+          ctx.fillStyle = dGrad;
+          ctx.fillRect(-dLen, -1.6, dLen * 2, 3.2);
+          ctx.restore();
+        }
+
+        // Core Pinpoint Sunburst
+        const coreG = ctx.createRadialGradient(ix, iy, 0, ix, iy, 46);
+        coreG.addColorStop(0, `rgba(255, 252, 240, ${starA * 0.9})`);
+        coreG.addColorStop(0.32, `rgba(255, 196, 98, ${starA * 0.48})`);
+        coreG.addColorStop(1, 'rgba(220, 60, 30, 0)');
+        ctx.fillStyle = coreG;
+        ctx.beginPath();
+        ctx.arc(ix, iy, 46, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Tapered Ink-Brush Radial Action Needles focused on Impact Point
+      const needleA = Math.max(execFX.dash || 0, fk * 0.85, fa * 0.65);
+      if (needleA > 0.04) {
+        const rMin = Math.min(w, h) * 0.34;
+        const rMax = Math.max(w, h) * 0.78;
+        ctx.save();
+        for (let i = 0; i < 36; i++) {
+          const a0 = (i / 36) * TAU + ((i % 3) - 1) * 0.025;
+          const r1 = rMin + ((i * 23) % 9) * 16;
+          const x1 = ix + Math.cos(a0) * r1;
+          const y1 = iy + Math.sin(a0) * r1;
+          const x2 = ix + Math.cos(a0) * rMax;
+          const y2 = iy + Math.sin(a0) * rMax;
+          ctx.strokeStyle = i % 4 === 0
+            ? `rgba(225, 58, 42, ${needleA * 0.36})`
+            : `rgba(252, 232, 186, ${needleA * 0.26})`;
+          ctx.lineWidth = i % 3 === 0 ? 2.2 : 1.1;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Widescreen 2.39:1 Anamorphic Cinema Letterbox + Art-Deco Frame Crop Marks
+      if (ek > 0.02) {
+        const barH = Math.round((fk > 0.02 ? 56 : 46) * ek);
+        ctx.fillStyle = 'rgba(4, 5, 10, 0.96)';
+        ctx.fillRect(0, 0, w, barH);
+        ctx.fillRect(0, h - barH, w, barH);
+        ctx.fillStyle = `rgba(229, 179, 82, ${0.65 * ek})`;
+        ctx.fillRect(0, barH - 1.5, w, 1.5);
+        ctx.fillRect(0, h - barH, w, 1.5);
+
+        // Freeze-Frame Calligraphic Stamp & Cinnabar Seal ("一枪绝杀" / "无声抹喉")
+        if (fk > 0.02) {
+          const slamScale = 1 + Math.max(0, fk - 0.82) * 1.4;
+          const sx = w - 68;
+          const sy = h - barH - 28;
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.scale(slamScale, slamScale);
+
+          // Cinnabar Square Seal [孤枪]
+          ctx.fillStyle = 'rgba(178, 28, 20, 0.94)';
+          ctx.fillRect(-38, -42, 36, 36);
+          ctx.strokeStyle = '#f8ecd4';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(-35, -39, 30, 30);
+          ctx.font = '700 13px ' + FONT;
+          ctx.fillStyle = '#f8ecd4';
+          ctx.textAlign = 'center';
+          ctx.fillText('孤鸿', -20, -26);
+          ctx.fillText('绝印', -20, -11);
+
+          // Brush Calligraphy Title
+          const stampTxt = execFX.stamp || (execFX.stealth ? '无 声 抹 喉' : '一 枪 绝 杀');
+          ctx.textAlign = 'right';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.92)';
+          ctx.shadowBlur = 14;
+          ctx.font = `400 44px ${DISPLAY_FONT}`;
+          ctx.fillStyle = '#fbf1dc';
+          ctx.fillText(stampTxt, -50, -10);
+
+          ctx.shadowBlur = 0;
+          ctx.font = '700 10.5px ' + FONT;
+          ctx.fillStyle = '#e5b352';
+          ctx.fillText(
+            execFX.stealth ? 'SHANGHAI 1937 · SILENT ASSASSINATION' : 'SHANGHAI 1937 · POINT-BLANK EXECUTION',
+            -50,
+            6
+          );
+          ctx.restore();
+        }
+
+        // Subtitle dialogue remains legible inside bottom cinema bar!
+        if (radioT > 0 && radioMsg) {
+          ctx.font = '600 14px ' + FONT;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(246, 237, 216, 0.95)';
+          ctx.fillText(radioMsg, w * 0.5, h - Math.max(16, barH * 0.42));
+        }
+      }
     }
   }
 }

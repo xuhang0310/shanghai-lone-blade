@@ -106,11 +106,12 @@ export class EnemyManager {
 
     if (e.flash > 0) e.flash -= dt;
     if (e.flinch > 0) e.flinch = Math.max(0, e.flinch - dt * 5.5);
-    if (e.stun > 0) e.stun -= dt;
-    if (e.staggerT > 0) {
+    if (e.stun > 0) e.stun = Math.max(0, e.stun - dt);
+    if ((e.staggerT || 0) > 0) {
       e.staggerT = Math.max(0, e.staggerT - dt);
       e.flinch = Math.max(e.flinch || 0, 0.36);
     }
+    if ((e.finisherT || 0) > 0) e.finisherT = Math.max(0, e.finisherT - dt);
     if (e.inv > 0) e.inv -= dt;
     if (e.executing) {
       e.moving = false;
@@ -119,7 +120,7 @@ export class EnemyManager {
     }
 
     if (!e.awake) {
-      if (d < 27 && (d < 7 || level.los3(e.x, e.ht - 0.2, e.z, P.x, ph, P.z))) {
+      if (d < 34 && (d < 8 || level.los3(e.x, e.ht - 0.2, e.z, P.x, ph, P.z))) {
         this.wake(level, e, callbacks);
       } else {
         return;
@@ -194,7 +195,19 @@ export class EnemyManager {
           if (e.coverAge > 5 && !e.post) e.cover = null;
         } else {
           e.duck = !busy;
-          if (!e.post && (d < 8.1 || e.coverAge > 14 || level.los3(e.x, e.ht * 0.45, e.z, P.x, ph, P.z))) {
+          e.peekT = (e.peekT ?? 1.6) - dt;
+          if (!busy && e.peekT <= 0 && e.cd <= 0) {
+            e.duck = false;
+            e.sees = level.los3(e.x, e.ht - 0.15, e.z, P.x, ph, P.z);
+            if (e.sees) {
+              e.aimT = 0.34;
+              e.peekT = rnd(1.6, 2.8);
+            } else if (!e.post) {
+              e.cover = null;
+              e.coverT = 2.2;
+            }
+          }
+          if (!e.post && (d < 8.1 || e.coverAge > 12 || level.los3(e.x, e.ht * 0.45, e.z, P.x, ph, P.z))) {
             e.cover = null;
             e.duck = false;
             e.coverT = 3;
@@ -241,32 +254,33 @@ export class EnemyManager {
         e.ang = Math.atan2(vz, vx);
       }
 
-      if (P.execT <= 0) {
+      const canShoot = P.execT <= 0 && (e.staggerT || 0) <= 0 && (e.stun || 0) <= 0;
+      if (canShoot) {
         e.cd -= dt;
-        if (e.burst > 0 && e.staggerT <= 0) {
+        if (e.burst > 0) {
           e.burstT -= dt;
           if (e.burstT <= 0) {
             e.burstT = 0.11;
             e.burst--;
-            this._fire(e, 0.085, 285, e.type === 'boss' ? 7 : 6, false, ctx);
+            this._fire(e, 0.075, 295, e.type === 'boss' ? 7 : 6, false, ctx);
           }
-        } else if (e.aimT > 0 && e.staggerT <= 0) {
+        } else if (e.aimT > 0) {
           e.aimT -= dt;
           if (e.aimT <= 0) {
             if (e.type === 'gunman' || e.type === 'officer') {
-              this._fire(e, 0.06, 300, 9, false, ctx);
-              e.cd = rnd(1.1, 1.7);
+              this._fire(e, 0.055, 310, 9, false, ctx);
+              e.cd = rnd(0.95, 1.55);
             } else if (e.type === 'soldier') {
-              this._fire(e, 0.032, 680, 15, false, ctx);
-              e.cd = rnd(1.9, 2.5);
+              this._fire(e, 0.030, 680, 15, false, ctx);
+              e.cd = rnd(1.6, 2.2);
             } else {
               e.burst = e.type === 'boss' ? 8 : 5;
               e.burstT = 0;
-              e.cd = rnd(1.6, 2.2);
+              e.cd = rnd(1.4, 2.0);
             }
           }
-        } else if (e.sees && d < 34 && e.cd <= 0 && (e.staggerT || 0) <= 0 && !(e.way && e.way.length)) {
-          e.aimT = e.type === 'soldier' ? 0.6 : 0.38;
+        } else if (e.sees && d < 42 && e.cd <= 0 && !(e.way && e.way.length)) {
+          e.aimT = e.type === 'soldier' ? 0.52 : 0.34;
         }
       }
 
@@ -387,9 +401,12 @@ export class EnemyManager {
     e.hp -= dmg;
     e.flash = 0.08;
     e.flinch = execBoost ? 1.8 : 1.0;
-    e.stun = Math.max(e.stun, dmg >= 28 ? 0.55 : 0.24);
-    if (e.hp > 0 && (head || dmg >= 25 || (e.type === 'boss' ? e.hp <= e.max * 0.22 : e.hp <= e.max * 0.80))) {
-      e.staggerT = Math.max(e.staggerT || 0, 5.5);
+    e.stun = Math.max(e.stun || 0, dmg >= 28 ? 0.45 : 0.18);
+    if (e.hp > 0) {
+      e.staggerT = Math.max(e.staggerT || 0, dmg >= 26 ? 0.65 : 0.22);
+      if (head || dmg >= 24 || (e.type === 'boss' ? e.hp <= e.max * 0.22 : e.hp <= e.max * 0.82)) {
+        e.finisherT = Math.max(e.finisherT || 0, 6.5);
+      }
     }
     this.wake(level, e, callbacks);
     const bloodCnt = execBoost > 8 ? 22 : execBoost > 0 ? 14 : 7;

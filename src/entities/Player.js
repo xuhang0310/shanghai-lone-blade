@@ -379,21 +379,21 @@ export class PlayerController {
 
     let fovTarget = baseFov * (1 - 0.28 * this.ads) - 4.5 * (this.btK || 0) + muzzle * 0.5;
 
-    // God-of-War One-Shot Dynamic Close-Up Execution Camera (seamless blend in & out, wall-safe!)
+    // Cinema Two-Stage Close-Up & Telephoto Freeze-Frame Execution Camera (wall-safe!)
     const ec = this.execCam;
     if (ec && ec.k > 0.005) {
       const ek = clamp(ec.k, 0, 1);
-      const orbAng = ec.yaw + Math.PI + ec.side * 0.88;
-      const orbR = ec.dist || 1.82;
+      const orbAng = ec.yaw + Math.PI + ec.side * (ec.orbOff ?? 1.02);
+      const orbR = ec.dist || 1.15;
       const odx = Math.cos(orbAng);
       const odz = Math.sin(orbAng);
-      const anchorY = this.camY + 1.26;
+      const anchorY = this.camY + (ec.lookY || 1.38);
       let safeR = orbR;
-      const eHit = physics.castRay(ec.mx, anchorY, ec.mz, odx, -0.06, odz, orbR + 0.25, GROUP_WORLD, physics.playerCollider);
-      if (eHit) safeR = Math.max(0.72, eHit.dist - 0.28);
+      const eHit = physics.castRay(ec.mx, anchorY, ec.mz, odx, -0.04, odz, orbR + 0.22, GROUP_WORLD, physics.playerCollider);
+      if (eHit) safeR = Math.max(0.62, eHit.dist - 0.24);
 
       const exX = ec.mx + odx * safeR;
-      const exY = Math.max(0.45, this.camY + 1.08);
+      const exY = Math.max(0.55, this.camY + (ec.camYOff ?? 1.34));
       const exZ = ec.mz + odz * safeR;
 
       camera.position.set(
@@ -403,12 +403,13 @@ export class PlayerController {
       );
       _tmpV.set(
         stdLookX + (ec.mx - stdLookX) * ek,
-        stdLookY + (this.camY + (ec.lookY || 1.32) - stdLookY) * ek,
+        stdLookY + (anchorY - stdLookY) * ek,
         stdLookZ + (ec.mz - stdLookZ) * ek
       );
       camera.lookAt(_tmpV);
       if (ec.roll) camera.rotateZ(ec.roll * ek);
-      fovTarget = fovTarget - 11 * ek + (ec.fovKick || 0);
+      const targetExecFov = ec.fov || 36;
+      fovTarget = fovTarget * (1 - ek) + targetExecFov * ek + (ec.fovKick || 0);
     } else {
       camera.position.set(stdX + rnd(-sk, sk), stdY + rnd(-sk, sk), stdZ + rnd(-sk, sk));
       _tmpV.set(stdLookX, stdLookY, stdLookZ);

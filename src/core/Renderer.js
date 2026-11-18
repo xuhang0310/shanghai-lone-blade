@@ -355,6 +355,26 @@ export class GameRenderer {
 
   _initSharedPools() {
     const sh = g => { g.userData.shared = true; return g; };
+    // Tapered 3D crescent strike/blade arc with smooth vertex-color glow falloff
+    const slashGeo = new THREE.RingGeometry(0.36, 0.72, 32, 2, -1.08, 2.16);
+    {
+      const sp = slashGeo.attributes.position;
+      const sc = new Float32Array(sp.count * 3);
+      for (let i = 0; i < sp.count; i++) {
+        const vx = sp.getX(i);
+        const vy = sp.getY(i);
+        const r = Math.hypot(vx, vy);
+        const ang = Math.atan2(vy, vx);
+        const u = THREE.MathUtils.clamp((ang + 1.08) / 2.16, 0, 1); // 0 = tail, 1 = leading razor edge
+        const v = THREE.MathUtils.clamp((r - 0.36) / 0.36, 0, 1);   // 0 = inner, 1 = outer blade rim
+        const headGlow = Math.pow(u, 2.2) * Math.sin(v * Math.PI * 0.88 + 0.12);
+        sc[i * 3] = headGlow * 1.35;
+        sc[i * 3 + 1] = headGlow * (0.22 + 0.76 * Math.pow(u, 3.0));
+        sc[i * 3 + 2] = headGlow * (0.12 + 0.72 * Math.pow(u, 4.5));
+      }
+      slashGeo.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+    }
+
     this.G = {
       box: sh(new THREE.BoxGeometry(1, 1, 1)),
       cyl: sh(new THREE.CylinderGeometry(1, 1, 1, 16)),
@@ -368,7 +388,10 @@ export class GameRenderer {
       beam: sh(new THREE.CylinderGeometry(1, 1, 1, 20, 1, true)),
       flat: sh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)),
       lampCone: sh(new THREE.CylinderGeometry(0.28, 3.6, 4.2, 20, 1, true)),
-      shockRing: sh(new THREE.RingGeometry(0.52, 1.0, 28).rotateX(-Math.PI / 2))
+      shockRing: sh(new THREE.RingGeometry(0.52, 1.0, 28).rotateX(-Math.PI / 2)),
+      machRing: sh(new THREE.RingGeometry(0.945, 1.0, 48)),
+      lanceCone: sh(new THREE.ConeGeometry(0.095, 1.0, 16, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2)),
+      slashArc: sh(slashGeo)
     };
 
     const p = this.assets.procTex;
@@ -473,7 +496,7 @@ export class GameRenderer {
     this.partPts = new THREE.Points(
       this.partGeo,
       new THREE.PointsMaterial({
-        size: 0.082,
+        size: 0.044,
         map: dropTex,
         transparent: true,
         alphaTest: 0.04,

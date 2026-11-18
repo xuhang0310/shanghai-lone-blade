@@ -88,7 +88,10 @@ let execTarget = null;
 let execKind = 'exec';
 let execSession = null;
 let hitstopT = 0;
-const execFX = { k: 0, flash: 0, dash: 0 };
+let freezeFrameT = 0;
+let execVfxList = [];
+const execFX = { k: 0, flash: 0, dash: 0, freeze: 0, stealth: false, stamp: '', impactPos: null };
+const _execMuzV = new THREE.Vector3();
 let shake = 0;
 let hurtFlash = 0;
 let hurtAng = null;
@@ -627,7 +630,14 @@ function buildLevelWorld(lvlIndex) {
   execTarget = null;
   execSession = null;
   hitstopT = 0;
-  execFX.k = execFX.flash = execFX.dash = 0;
+  freezeFrameT = 0;
+  execFX.k = execFX.flash = execFX.dash = execFX.freeze = 0;
+  execFX.impactPos = null;
+  for (const fx of execVfxList) {
+    gr.scene.remove(fx.mesh);
+    if (fx.ownMat) fx.mesh.material.dispose();
+  }
+  execVfxList = [];
 
   physics.reset();
   physics.onProjectileContact = (entry, other) => {
@@ -786,6 +796,190 @@ function spawnExecShockRing(x, y, z, colHex = 0xffd280, maxScale = 3.6) {
   shockwaves.push({ t: 0, dur: 0.26, max: maxScale, mesh: sw, dead: false });
 }
 
+function spawnSlashArc3D(x, y, z, yaw, tiltZ = 0.22, colHex = 0xffbe68, radiusScale = 0.92) {
+  const mat = new THREE.MeshBasicMaterial({
+    color: colHex,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+  const m = new THREE.Mesh(gr.G.slashArc, mat);
+  m.position.set(x, y, z);
+  m.rotation.order = 'YXZ';
+  m.rotation.y = -yaw;
+  m.rotation.x = Math.PI * 0.5;
+  m.rotation.z = tiltZ;
+  m.scale.setScalar(radiusScale);
+  gr.scene.add(m);
+  execVfxList.push({
+    mesh: m,
+    ownMat: true,
+    kind: 'slash',
+    t: 0,
+    dur: 0.24,
+    s0: radiusScale * 0.86,
+    s1: radiusScale * 1.24,
+    op0: 0.96,
+    rotZVel: -6.5,
+    dead: false
+  });
+}
+
+function spawnExecFinisherVfx3D(muzX, muzY, muzZ, hitX, hitY, hitZ, ndx, ndz, stealth) {
+  const aimTarget = new THREE.Vector3(muzX + ndx * 4, muzY + 0.08, muzZ + ndz * 4);
+
+  if (stealth) {
+    // Razor-sharp silver-crimson double throat-slash crescent arcs
+    spawnSlashArc3D(hitX, hitY, hitZ, Math.atan2(ndz, ndx), 0.16, 0xdff4ff, 0.98);
+    spawnSlashArc3D(hitX, hitY - 0.03, hitZ, Math.atan2(ndz, ndx) + 0.3, -0.22, 0xe8281c, 0.84);
+  } else {
+    // 1. Supersonic Dual-Layer 3D Muzzle Flame Lance (outer amber + inner incandescent core)
+    for (const [col, rScale, lenScale, op] of [
+      [0xff8c28, 1.05, 0.72, 0.88],
+      [0xfff8e2, 0.48, 0.50, 0.98]
+    ]) {
+      const lm = new THREE.MeshBasicMaterial({
+        color: col,
+        map: assets.procTex.flame,
+        transparent: true,
+        opacity: op,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const cone = new THREE.Mesh(gr.G.lanceCone, lm);
+      cone.position.set(muzX, muzY, muzZ);
+      cone.lookAt(aimTarget);
+      cone.scale.set(rScale, rScale, lenScale);
+      gr.scene.add(cone);
+      execVfxList.push({
+        mesh: cone,
+        ownMat: true,
+        kind: 'lance',
+        t: 0,
+        dur: 0.22,
+        s0: rScale,
+        s1: rScale * 1.35,
+        lenScale,
+        op0: op,
+        dead: false
+      });
+    }
+
+    // 2. Two Razor-Thin Vertical 3D Mach Condensation Shockwave Rings perpendicular to bullet path!
+    for (const [distOff, sInit, sMax, col, op] of [
+      [0.08, 0.19, 0.54, 0xfff0c8, 0.58],
+      [0.36, 0.30, 0.86, 0xff7852, 0.44]
+    ]) {
+      const rm = new THREE.MeshBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: op,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      });
+      const ring = new THREE.Mesh(gr.G.machRing, rm);
+      ring.position.set(muzX + ndx * distOff, muzY + 0.01, muzZ + ndz * distOff);
+      ring.lookAt(aimTarget);
+      ring.scale.setScalar(sInit);
+      gr.scene.add(ring);
+      execVfxList.push({
+        mesh: ring,
+        ownMat: true,
+        kind: 'mach',
+        t: 0,
+        dur: 0.28,
+        s0: sInit,
+        s1: sMax,
+        op0: op,
+        vx: ndx * 0.9,
+        vz: ndz * 0.9,
+        dead: false
+      });
+    }
+
+    // 3. Penetrating High-Velocity Gold Bullet Streak piercing through frame
+    const bm = new THREE.MeshBasicMaterial({
+      color: 0xfff2c6,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false
+    });
+    const beam = new THREE.Mesh(gr.G.box, bm);
+    beam.position.set(muzX + ndx * 0.58, muzY + 0.02, muzZ + ndz * 0.58);
+    beam.rotation.y = -Math.atan2(ndz, ndx);
+    beam.scale.set(1.16, 0.012, 0.012);
+    gr.scene.add(beam);
+    execVfxList.push({
+      mesh: beam,
+      ownMat: true,
+      kind: 'beam',
+      t: 0,
+      dur: 0.20,
+      s0: 1,
+      s1: 1,
+      op0: 0.95,
+      dead: false
+    });
+  }
+
+  // 4. Volumetric Atomized Arterial Exit-Mist Clouds + Pre-Fanned Pinpoint Micro-Droplets
+  for (let i = 0; i < 3; i++) {
+    const sm = gr.M.smokeCloud.clone();
+    sm.color.setHex(i === 0 ? 0xb51812 : 0x5c0806);
+    sm.opacity = 0.72;
+    const sp = new THREE.Sprite(sm);
+    const off = 0.14 + i * 0.14;
+    sp.position.set(hitX + ndx * off + rnd(-0.06, 0.06), hitY + 0.02 + i * 0.04, hitZ + ndz * off + rnd(-0.06, 0.06));
+    const sInit = 0.42 + i * 0.14;
+    sp.scale.setScalar(sInit);
+    gr.scene.add(sp);
+    execVfxList.push({
+      mesh: sp,
+      ownMat: true,
+      kind: 'mist',
+      t: 0,
+      dur: 0.46,
+      s0: sInit,
+      s1: sInit + 0.85,
+      op0: 0.72,
+      vx: ndx * (1.2 + i * 0.6),
+      vy: 0.35,
+      vz: ndz * (1.2 + i * 0.6),
+      dead: false
+    });
+  }
+
+  // Spawn pinpoint micro-droplets already fanned 15-28cm out into 3D space so Freeze-Frame captures a crisp suspended spray!
+  for (let i = 0; i < 28; i++) {
+    const spreadAng = Math.atan2(ndz, ndx) + rnd(-0.62, 0.62);
+    const spd = rnd(4.2, 10.5);
+    const vx = Math.cos(spreadAng) * spd;
+    const vy = rnd(-0.8, 3.2);
+    const vz = Math.sin(spreadAng) * spd;
+    const leadT = rnd(0.015, 0.042);
+    parts.push({
+      x: hitX + vx * leadT,
+      y: hitY + vy * leadT,
+      z: hitZ + vz * leadT,
+      vx,
+      vy,
+      vz,
+      col: i % 5 === 0 ? '#ffdca0' : i % 2 === 0 ? '#c91e16' : '#740a07',
+      life: rnd(0.32, 0.58)
+    });
+  }
+}
+
 function findExecTarget() {
   let best = null;
   let bestKind = 'exec';
@@ -808,6 +1002,7 @@ function findExecTarget() {
     const vulnerable =
       !e.awake ||
       behind ||
+      (e.finisherT || 0) > 0 ||
       (e.staggerT || 0) > 0 ||
       e.stun > 0 ||
       e.type === 'thug' ||
@@ -851,67 +1046,77 @@ function tryExecute() {
     P.ang = Math.atan2(ndz, ndx);
     P.execT = 0.34;
     P.inv = 0.58;
-    hitstopT = 0.046;
-    execFX.flash = 0.48;
+    hitstopT = 0.048;
+    execFX.flash = 0.45;
     execFX.dash = 0.65;
     shake = Math.max(shake, 0.44);
     audio.sfx('execCrunch');
     audio.playVoiceShout('exec', 0.6);
+    spawnSlashArc3D(e.x - ndx * 0.25, P.y + 1.32, e.z - ndz * 0.25, P.ang, 0.28, 0xffc870, 0.85);
     level.moveEnt(e, ndx * 0.95, ndz * 0.95);
     enemyMgr.hitEnemy(e, 26, ndx, ndz, e.ht * 0.78, makeLogicCtx(), false, 0);
     if (e.hp > 0) {
-      e.staggerT = 5.8;
+      e.staggerT = 2.6;
+      e.finisherT = 6.5;
       e.stun = 1.6;
       e.flinch = 2.0;
     }
-    puff(e.x, e.ht * 0.82, e.z, 10, '#ffd88a', 6.5, 0.25);
-    say('重托破防硬直！再按 [E] 贴脸残暴终结！');
+    say('重托破防失衡！再按 [E] 贴脸特写绝杀！');
     return;
   }
 
-  // Full 3-Act God-of-War Choreographed Finisher!
+  // Full 3-Act Cinema Close-Up + Freeze-Frame Finisher!
   const stealth = !e.awake;
-  const dur = stealth ? 0.66 : 0.86;
+  const wKey = WEAPONS[P.gun]?.modelKey || 'pistol';
+  const isLongGun = wKey !== 'pistol' && wKey !== 'browning' && wKey !== 'revolver' && wKey !== 'knife';
+  const standoffDist = stealth ? 0.86 : isLongGun ? 1.52 : 1.28;
+  const dur = stealth ? 0.68 : 0.76;
   const yaw = Math.atan2(ndz, ndx);
 
-  // Choose wall-free side (+1 or -1) for the orbiting heroic 3/4 execution camera
+  // Choose wall-free side (+1 or -1) for the 36°-FOV Telephoto Portrait Close-Up
   const mx0 = (P.x + e.x) * 0.5;
   const mz0 = (P.z + e.z) * 0.5;
-  const rPlus = physics.castRay(mx0, P.y + 1.25, mz0, Math.cos(yaw + Math.PI + 0.88), 0, Math.sin(yaw + Math.PI + 0.88), 2.1, GROUP_WORLD, physics.playerCollider);
-  const rMinus = physics.castRay(mx0, P.y + 1.25, mz0, Math.cos(yaw + Math.PI - 0.88), 0, Math.sin(yaw + Math.PI - 0.88), 2.1, GROUP_WORLD, physics.playerCollider);
+  const rPlus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI + 1.15), 0, Math.sin(yaw + Math.PI + 1.15), 2.1, GROUP_WORLD, physics.playerCollider);
+  const rMinus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 1.15), 0, Math.sin(yaw + Math.PI - 1.15), 2.1, GROUP_WORLD, physics.playerCollider);
   const side = !rPlus ? 1 : !rMinus ? -1 : rPlus.dist >= rMinus.dist ? 1 : -1;
 
   e.executing = true;
   P.crouch = false;
   P.ang = yaw;
   P.execT = dur;
-  P.inv = dur + 0.48;
+  P.inv = dur + 0.85;
   execFX.dash = 0.95;
+  execFX.stealth = stealth;
   audio.sfx('execDash');
 
   execSession = {
     e,
     stealth,
+    isLongGun,
     style: stealth ? -1 : (Math.random() * 3) | 0,
     t: 0,
     dur,
-    standoff: stealth ? 0.78 : 0.88,
+    standoff: standoffDist,
     ndx,
     ndz,
     yaw,
     side,
     didSmash: false,
+    didFreeze: false,
     didKill: false
   };
 }
 
 function updateExecution(dt) {
-  if (execFX.flash > 0) execFX.flash = Math.max(0, execFX.flash - dt * 3.6);
-  if (execFX.dash > 0) execFX.dash = Math.max(0, execFX.dash - dt * 4.2);
+  if (execFX.flash > 0) execFX.flash = Math.max(0, execFX.flash - dt * 3.8);
+  if (execFX.dash > 0) execFX.dash = Math.max(0, execFX.dash - dt * 4.5);
 
   if (!execSession) {
     execFX.k = Math.max(0, execFX.k - dt * 6);
-    if (execFX.k <= 0.005) P.execCam = null;
+    if (execFX.k <= 0.005) {
+      P.execCam = null;
+      execFX.impactPos = null;
+    }
     return;
   }
 
@@ -919,8 +1124,8 @@ function updateExecution(dt) {
   const e = s.e;
   s.t += dt;
   const t = s.t;
-  const smashT = s.stealth ? 0.18 : 0.21;
-  const killT = s.stealth ? 0.44 : 0.52;
+  const smashT = s.stealth ? 0.16 : 0.18;
+  const killT = s.stealth ? 0.34 : 0.38;
 
   // Act 1: Ferocious 6m Predator Gap-Closing Dash across wet cobblestones
   if (e && e.hp > 0 && t < smashT) {
@@ -930,101 +1135,157 @@ function updateExecution(dt) {
     const remZ = goalZ - P.z;
     const remD = Math.hypot(remX, remZ);
     if (remD > 0.03) {
-      const step = Math.min(remD, (remD / Math.max(0.03, smashT - t + 0.02)) * dt * 1.35);
+      const step = Math.min(remD, (remD / Math.max(0.03, smashT - t + 0.02)) * dt * 1.38);
       const mv = physics.movePlayer((remX / remD) * step, 0, (remZ / remD) * step);
       P.x = mv.x;
       P.z = mv.z;
-      if (Math.random() < 0.55) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 3.4, 0.24);
+      if (Math.random() < 0.55) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 3.2, 0.22);
     }
     P.ang = s.yaw;
   }
 
-  // Act 2: Bone-Crushing Collar-Grab / Jaw-Breaker / Knee-Smash + Hitstop!
+  // Act 2: Collar-Grab & Bone-Crushing Jaw/Throat Strike + 3D Swept Crescent Arc!
   if (!s.didSmash && t >= smashT) {
     s.didSmash = true;
     if (e && e.hp > 0) {
+      e.ang = s.stealth ? s.yaw : Math.atan2(-s.ndz, -s.ndx);
+      const arcX = (P.x + e.x) * 0.5;
+      const arcZ = (P.z + e.z) * 0.5;
       if (s.stealth) {
-        audio.sfx('execSlash');
+        audio.sfx('execCrunch');
         hitstopT = 0.042;
-        execFX.flash = 0.42;
-        shake = Math.max(shake, 0.28);
-        e.flinch = 1.6;
-        puff(e.x, e.ht * 0.84, e.z, 12, '#c81e16', 6.2, 0.45);
+        execFX.flash = 0.32;
+        shake = Math.max(shake, 0.24);
+        e.flinch = 1.4;
+        spawnSlashArc3D(arcX, P.y + 1.38, arcZ, s.yaw, -0.18, 0xd8eeff, 0.78);
       } else {
         audio.sfx('execCrunch');
         audio.playVoiceShout('exec', 0.5);
         audio.playVoiceShout('grunt', 0.7);
-        hitstopT = 0.052;
-        execFX.flash = 0.55;
-        shake = Math.max(shake, 0.46);
-        e.ang = Math.atan2(-s.ndz, -s.ndx);
+        hitstopT = 0.050;
+        execFX.flash = 0.45;
+        shake = Math.max(shake, 0.42);
         e.flash = 0.12;
-        e.flinch = 2.4;
-        level.moveEnt(e, s.ndx * 0.18, s.ndz * 0.18);
-        puff(e.x, e.ht * (s.style === 1 ? 0.52 : 0.86), e.z, 11, '#c81e16', 7.2, 0.44);
-        puff(e.x, e.ht * 0.88, e.z, 7, '#dcebfa', 5.5, 0.26);
+        e.flinch = 2.3;
+        level.moveEnt(e, s.ndx * 0.16, s.ndz * 0.16);
+        spawnSlashArc3D(arcX, P.y + (s.style === 1 ? 0.92 : 1.42), arcZ, s.yaw, 0.24, 0xffb85c, 0.88);
       }
     }
   }
 
-  // Act 3: Point-Blank Coup-de-Grâce Blast / Silent Finisher + Heavy Hitstop & Ragdoll Launch!
-  if (!s.didKill && t >= killT) {
-    s.didKill = true;
+  // Act 3A: ENTER EXTREME TELEPHOTO CLOSE-UP + 0.46s STYLIZED NOIR FREEZE-FRAME TABLEAU!
+  if (!s.didFreeze && t >= killT) {
+    s.didFreeze = true;
     if (e && e.hp > 0) {
       const dx = e.x - P.x;
       const dz = e.z - P.z;
       const d = Math.hypot(dx, dz) || 1;
       const ndx = dx / d;
       const ndz = dz / d;
+      s.ndx = ndx;
+      s.ndz = ndz;
+
+      // Force hero into exact executioner pose so we read true 3D barrel-tip world position!
+      if (playerMesh) {
+        const pu = playerMesh.userData;
+        const aimPoseKey = s.style === 1 ? 'exec_aim_lo' : 'exec_aim_hi';
+        pu.execPose = { a: aimPoseKey, b: aimPoseKey, t: 1, w: 1 };
+        pu.execTwist = 0.06;
+        cf.poseMesh(playerMesh, P.x, P.z, P.ang, 'RelaxIdle', 0, 0, 0, 0, 0);
+        playerMesh.updateMatrixWorld(true);
+        pu.glint.getWorldPosition(_execMuzV);
+      } else {
+        _execMuzV.set(P.x + ndx * 0.88, P.y + 1.42, P.z + ndz * 0.88);
+      }
+
+      const hitY = P.y + (s.style === 1 ? 1.16 : 1.44);
+      const hitX = e.x - ndx * 0.06;
+      const hitZ = e.z - ndz * 0.06;
+      execFX.impactPos = { x: (_execMuzV.x + hitX) * 0.5, y: (_execMuzV.y + hitY) * 0.5, z: (_execMuzV.z + hitZ) * 0.5 };
+      execFX.stealth = s.stealth;
+      execFX.stamp = s.stealth
+        ? '无 声 抹 喉'
+        : ['一 枪 绝 杀', '碎 膝 伏 诛', '抵 颌 处 刑'][s.style] || '一 枪 绝 杀';
+
+      // Snap victim into dramatic freeze-frame recoil & pop hat mid-air!
+      e.flinch = 2.6;
+      e.flash = 0;
+      const eu = e.mesh?.userData;
+      if (eu?.hatMesh && eu.hatMesh.visible) {
+        eu.hatMesh.visible = false;
+        spawnFlyingHat(e.type, e.x + ndx * 0.12, (e.ht || 1.75) * 0.96 + 0.14, e.z + ndz * 0.12, ndx, ndz);
+      }
 
       if (s.stealth) {
-        e.awake = true;
-        enemyMgr.hitEnemy(e, 9999, ndx, ndz, e.ht * 0.86, makeLogicCtx(), true, 4.4);
-        score += 180;
-        killMark = 0.55;
-        say('雨夜无声抹喉！生命+22 · 专注+35');
-        radio('沈孤鸿：「无声放倒……弄堂里没人察觉。」', 2.6);
+        audio.sfx('execSlash');
+        audio.sfx('execFreeze');
+        spawnExecFinisherVfx3D(hitX - ndx * 0.2, hitY, hitZ - ndz * 0.2, hitX, hitY, hitZ, ndx, ndz, true);
+        radio('沈孤鸿：「无声放倒……弄堂里没人察觉。」', 3.0);
       } else {
         const wGun = WEAPONS[P.gun];
         audio.sfx(wGun.snd);
-        audio.sfx('execFinisher');
-        hitstopT = 0.072;
-        execFX.flash = 1.0;
-        muzzle = 1.65;
-        shake = Math.max(shake, 0.86);
-
-        const impactX = (P.x + e.x) * 0.5;
-        const impactZ = (P.z + e.z) * 0.5;
-        gr.boomLight.position.set(impactX, P.y + 1.38, impactZ);
-        gr.boomLight.intensity = 62;
-        spawnExecShockRing(e.x, 0.12, e.z, 0xffc870, 3.9);
-        puff(impactX, P.y + 1.36, impactZ, 16, '#ffd88a', 9.5, 0.28);
-        puff(impactX, P.y + 1.38, impactZ, 10, '#d8d4ca', 3.4, 0.65);
-        spawnCasing(P.x, P.y + 1.4, P.z, -ndz * 2.8 + rnd(-0.6, 0.6), ndx * 2.8 + rnd(-0.6, 0.6));
-
-        enemyMgr.hitEnemy(e, 9999, ndx, ndz, e.ht * 0.90, makeLogicCtx(), true, 14.5);
-
-        // God-of-War AoE Intimidation Shockwave: nearby enemies flinch & stagger in terror!
-        for (const o of level.enemies) {
-          if (o.hp > 0 && Math.hypot(o.x - P.x, o.z - P.z) < 8.8) {
-            o.stun = Math.max(o.stun || 0, 1.2);
-            o.flinch = 1.35;
-          }
-        }
-
-        P.mags[P.gun] = Math.min(wGun.mag, P.mags[P.gun] + 2);
-        score += 160;
-        killMark = 0.68;
-        headMark = 0.55;
-        say('残暴贴脸处决！生命+22 · 专注+35 · 弹匣+2');
+        audio.sfx('execFreeze');
+        muzzle = 1.4;
+        const camSideAng = s.yaw + Math.PI + s.side * 1.18;
+        gr.boomLight.position.set(
+          execFX.impactPos.x + Math.cos(camSideAng) * 0.75,
+          hitY + 0.32,
+          execFX.impactPos.z + Math.sin(camSideAng) * 0.75
+        );
+        gr.boomLight.intensity = 14;
+        spawnExecFinisherVfx3D(_execMuzV.x, _execMuzV.y, _execMuzV.z, hitX, hitY, hitZ, ndx, ndz, false);
+        spawnCasing(
+          _execMuzV.x - ndx * 0.22 - ndz * 0.14,
+          _execMuzV.y + 0.10,
+          _execMuzV.z - ndz * 0.22 + ndx * 0.14,
+          -ndz * 2.8,
+          ndx * 2.8
+        );
         const lines = [
           '沈孤鸿：「这一枪，替上海滩收你的命！」',
           '沈孤鸿：「下辈子记住，别拿枪指着我的头。」',
           '沈孤鸿：「挡我路者——死！」'
         ];
-        if (Math.random() < 0.75) radio(lines[(Math.random() * lines.length) | 0], 2.6);
+        radio(lines[s.style % lines.length], 3.0);
       }
 
+      // Engage 620ms Dramatic Cinema Freeze-Frame Tableau!
+      freezeFrameT = 0.62;
+      execFX.freeze = 1.0;
+      execFX.flash = 0.88;
+    }
+  }
+
+  // Act 3B: SHATTER FREEZE-FRAME -> Launch Victim Ragdoll 15.2m/s Across Wet Cobblestones!
+  if (s.didFreeze && !s.didKill && freezeFrameT <= 0) {
+    s.didKill = true;
+    audio.sfx('execRelease');
+    if (!s.stealth) audio.sfx('execFinisher');
+    shake = Math.max(shake, s.stealth ? 0.32 : 0.88);
+
+    if (e && e.hp > 0) {
+      if (s.stealth) {
+        e.awake = true;
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.86, makeLogicCtx(), true, 4.6);
+        score += 180;
+        killMark = 0.55;
+        say('雨夜无声抹喉！生命+22 · 专注+35');
+      } else {
+        spawnExecShockRing(e.x, 0.10, e.z, 0xffc870, 4.0);
+        enemyMgr.hitEnemy(e, 9999, s.ndx, s.ndz, e.ht * 0.90, makeLogicCtx(), true, 15.2);
+        for (const o of level.enemies) {
+          if (o.hp > 0 && Math.hypot(o.x - P.x, o.z - P.z) < 8.8) {
+            o.stun = Math.max(o.stun || 0, 1.25);
+            o.flinch = 1.4;
+          }
+        }
+        const wGun = WEAPONS[P.gun];
+        P.mags[P.gun] = Math.min(wGun.mag, P.mags[P.gun] + 2);
+        score += 160;
+        killMark = 0.72;
+        headMark = 0.60;
+        say('特写绝杀处决！生命+22 · 专注+35 · 弹匣+2');
+      }
       P.hp = Math.min(100, P.hp + 22);
       P.focus = Math.min(100, P.focus + 35);
       P.gunHoldT = 3.0;
@@ -1032,24 +1293,22 @@ function updateExecution(dt) {
     }
   }
 
-  // Smooth One-Shot Execution Camera Envelope
-  const camIn = clamp(t / 0.16, 0, 1);
-  const camOut = clamp((s.dur - t) / 0.22, 0, 1);
+  // Two-Stage Cinema Camera: Tight Grapple (1.36m, 41° FOV) -> Extreme Telephoto Freeze-Frame Close-Up (1.02m, 34° FOV)!
+  const camIn = clamp(t / 0.14, 0, 1);
+  const camOut = clamp((s.dur - t) / 0.24, 0, 1);
   const camK = Math.min(camIn, camOut);
   execFX.k = camK;
 
-  const anchorX = e && e.hp > 0 ? (P.x + e.x) * 0.5 : P.x + s.ndx * 0.45;
-  const anchorZ = e && e.hp > 0 ? (P.z + e.z) * 0.5 : P.z + s.ndz * 0.45;
-  const fovKick = s.didKill
-    ? Math.max(0, 1 - (t - killT) / 0.24) * 9.0
-    : s.didSmash
-      ? Math.max(0, 1 - (t - smashT) / 0.14) * 3.8
-      : 0;
-  const roll = s.didKill
-    ? Math.max(0, 1 - (t - killT) / 0.26) * 0.07 * s.side
-    : s.didSmash
-      ? -0.04 * s.side
-      : 0;
+  const inCloseup = t >= killT - 0.04;
+  const anchorX = e && e.hp > 0
+    ? P.x * 0.54 + e.x * 0.46
+    : P.x + s.ndx * 0.58;
+  const anchorZ = e && e.hp > 0
+    ? P.z * 0.54 + e.z * 0.46
+    : P.z + s.ndz * 0.58;
+
+  const fovKick = s.didKill ? Math.max(0, 1 - (t - killT) / 0.22) * 7.5 : 0;
+  const roll = inCloseup ? -0.048 * s.side : s.didSmash ? -0.03 * s.side : 0;
 
   P.execCam = {
     k: camK,
@@ -1057,13 +1316,16 @@ function updateExecution(dt) {
     mz: anchorZ,
     yaw: s.yaw,
     side: s.side,
-    dist: s.stealth ? 1.65 : 1.82,
-    lookY: s.style === 1 && s.didSmash ? 1.12 : 1.32,
+    orbOff: inCloseup ? 1.22 : 0.92,
+    dist: inCloseup ? (s.isLongGun ? 1.88 : 1.66) + 0.14 * (execFX.freeze || 0) : 1.64,
+    camYOff: inCloseup ? (s.style === 1 ? 1.24 : 1.44) : 1.22,
+    lookY: inCloseup ? (s.style === 1 ? 1.20 : 1.42) : 1.32,
+    fov: inCloseup ? 36 : 42,
     fovKick,
     roll
   };
 
-  if (t >= s.dur) {
+  if (t >= s.dur && freezeFrameT <= 0) {
     if (e) e.executing = false;
     if (playerMesh) {
       playerMesh.userData.execPose = null;
@@ -1071,6 +1333,7 @@ function updateExecution(dt) {
     }
     execSession = null;
     P.execCam = null;
+    execFX.impactPos = null;
   }
 }
 
@@ -1922,8 +2185,8 @@ function syncScene(dt) {
     if (execSession) {
       const s = execSession;
       const t = s.t;
-      const smashT = s.stealth ? 0.18 : 0.21;
-      const killT = s.stealth ? 0.44 : 0.52;
+      const smashT = s.stealth ? 0.16 : 0.18;
+      const killT = s.stealth ? 0.34 : 0.38;
       const aimTarget = s.style === 1 ? 'exec_aim_lo' : 'exec_aim_hi';
       if (t < smashT) {
         pu.execPose = { a: 'exec_windup', b: 'exec_windup', t: 0, w: clamp(t / 0.1, 0, 1) };
@@ -1947,7 +2210,7 @@ function syncScene(dt) {
       pu.execTwist = 0;
     }
 
-    const dashingExec = !!(execSession && execSession.t < (execSession.stealth ? 0.18 : 0.21));
+    const dashingExec = !!(execSession && execSession.t < (execSession.stealth ? 0.16 : 0.18));
     pu.rate = rolling ? 1.6 : diving ? 0.45 : dashingExec ? 1.65 : execing ? 1.15 : P.air ? 0.5 : P.ads > 0.5 ? 1.05 : walking ? 1.06 : 1.12;
     pu.strike = 0;
     const mode =
@@ -2100,6 +2363,29 @@ function syncScene(dt) {
     }
   }
   shockwaves = shockwaves.filter(sw => !sw.dead);
+
+  for (let i = 0; i < execVfxList.length; i++) {
+    const fx = execVfxList[i];
+    fx.t += dt;
+    const k = clamp(fx.t / fx.dur, 0, 1);
+    if (fx.vx) fx.mesh.position.x += fx.vx * dt;
+    if (fx.vy) fx.mesh.position.y += fx.vy * dt;
+    if (fx.vz) fx.mesh.position.z += fx.vz * dt;
+    if (fx.rotZVel) fx.mesh.rotation.z += fx.rotZVel * dt;
+    const sc = fx.s0 + (fx.s1 - fx.s0) * Math.pow(k, 0.55);
+    if (fx.kind === 'lance') {
+      fx.mesh.scale.set(sc, sc, fx.lenScale * (1 + 0.35 * k));
+    } else if (fx.kind !== 'beam') {
+      fx.mesh.scale.setScalar(sc);
+    }
+    fx.mesh.material.opacity = Math.max(0, fx.op0 * (1 - k * k));
+    if (k >= 1) {
+      gr.scene.remove(fx.mesh);
+      if (fx.ownMat) fx.mesh.material.dispose();
+      fx.dead = true;
+    }
+  }
+  execVfxList = execVfxList.filter(fx => !fx.dead);
 
   for (let i = 0; i < blastClouds.length; i++) {
     const bc = blastClouds[i];
@@ -2259,14 +2545,29 @@ function frame(ts) {
   }
 
   let effDt = dt;
-  if (hitstopT > 0 && state === 'play') {
-    hitstopT = Math.max(0, hitstopT - dt);
-    effDt = dt * 0.025;
-    shake = Math.max(shake, 0.30);
+  if (freezeFrameT > 0 && state === 'play') {
+    freezeFrameT = Math.max(0, freezeFrameT - dt);
+    execFX.freeze = clamp(freezeFrameT / 0.62, 0, 1);
+    execFX.flash = Math.max(0, execFX.flash - dt * 3.2);
+    if (P.execCam) {
+      const baseD = execSession?.isLongGun ? 1.88 : 1.66;
+      P.execCam.dist = baseD + 0.14 * execFX.freeze;
+    }
+    shake = Math.max(shake, 0.06 * execFX.freeze);
+    effDt = 0;
+  } else {
+    execFX.freeze = 0;
+    if (hitstopT > 0 && state === 'play') {
+      hitstopT = Math.max(0, hitstopT - dt);
+      effDt = dt * 0.025;
+      shake = Math.max(shake, 0.28);
+    }
   }
 
-  if (state === 'play') updatePlay(effDt);
-  else {
+  if (state === 'play') {
+    if (effDt > 0) updatePlay(effDt);
+    else if (freezeFrameT <= 0) updateExecution(0);
+  } else {
     time += dt;
     physics.step(dt, worldGroup);
   }
@@ -2490,13 +2791,24 @@ window.__game = {
     setTimeout(() => { input.mouse.down = false; }, 120);
   },
   stageExecTarget() {
-    const e = level.enemies.find(o => o.hp > 0);
+    const shooter = level.enemies.find(o => o.hp > 0 && o.type !== 'thug');
+    if (shooter) {
+      shooter.x = P.x + Math.cos(P.ang) * 13.5 + 1.2;
+      shooter.z = P.z + Math.sin(P.ang) * 13.5;
+      shooter.ang = P.ang + Math.PI;
+      shooter.awake = true;
+      shooter.sees = true;
+      shooter.cover = null;
+      shooter.cd = 0.05;
+      physics.updateEnemyCollider(shooter, shooter.x, shooter.z, shooter.ht);
+    }
+    const e = level.enemies.find(o => o.hp > 0 && o !== shooter);
     if (!e) return null;
-    e.x = P.x + Math.cos(P.ang) * 3.4;
+    e.x = P.x + Math.cos(P.ang) * 3.4 - 0.35;
     e.z = P.z + Math.sin(P.ang) * 3.4;
     e.ang = P.ang + Math.PI;
     e.awake = true;
-    e.staggerT = 5.0;
+    e.finisherT = 8.0;
     physics.updateEnemyCollider(e, e.x, e.z, e.ht);
     execTarget = findExecTarget();
     return { type: e.type, execKind };
