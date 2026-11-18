@@ -55,6 +55,9 @@ export class PlayerController {
     this.recoil = 0;
     this.bloom = 0;
     this.camY = 0;
+    this.focus = 100;
+    this.bulletTime = false;
+    this.btK = 0;
     this.mesh = null;
   }
 
@@ -75,6 +78,8 @@ export class PlayerController {
     this.bloom = 0;
     this.camY = 0;
     this.still = 0;
+    this.bulletTime = false;
+    this.btK = 0;
   }
 
   currentHeight() {
@@ -276,7 +281,7 @@ export class PlayerController {
     );
     camera.lookAt(_tmpV);
 
-    const f = baseFov * (1 - 0.3 * this.ads) + muzzle * 0.5;
+    const f = baseFov * (1 - 0.3 * this.ads) - 4.5 * (this.btK || 0) + muzzle * 0.5;
     if (Math.abs(f - camera.fov) > 0.01) {
       camera.fov = f;
       camera.updateProjectionMatrix();

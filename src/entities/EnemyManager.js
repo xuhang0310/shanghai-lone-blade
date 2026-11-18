@@ -6,9 +6,21 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export class EnemyManager {
   constructor() {}
 
-  wake(level, e) {
+  wake(level, e, callbacks = null) {
     if (e.awake) return;
     e.awake = true;
+    if (callbacks?.radio && (level.calloutCd || 0) <= 0) {
+      level.calloutCd = 8.5;
+      const lines = {
+        thug: '黑龙帮打手：「弄堂口有人！抄家伙围住他！」',
+        gunman: '帮派枪手：「是那个冷枪手！快找掩体压制！」',
+        soldier: '码头守卫：「有人闯进十六铺了，开火！」',
+        officer: '守卫军官：「全队注意，给我包抄过去！」',
+        gunner: '重机枪手：「火力压制！别让他靠近！」',
+        boss: '帮主黑龙：「沈孤鸿……这间货仓今天就是你的葬身地！」'
+      };
+      callbacks.radio(lines[e.type] || '敌人：「发现目标，开火！」', 3.4);
+    }
     for (const o of level.enemies) {
       if (!o.awake && o.group === e.group && Math.hypot(o.x - e.x, o.z - e.z) < 16.5) {
         o.awake = true;
@@ -48,6 +60,7 @@ export class EnemyManager {
   update(dt, ctx) {
     const { level, player: P, physics, audio, callbacks } = ctx;
     const enemies = level.enemies;
+    if (level.calloutCd > 0) level.calloutCd = Math.max(0, level.calloutCd - dt);
 
     for (const e of enemies) {
       if (e.hp <= 0) continue;
@@ -98,7 +111,7 @@ export class EnemyManager {
 
     if (!e.awake) {
       if (d < 27 && (d < 7 || level.los3(e.x, e.ht - 0.2, e.z, P.x, ph, P.z))) {
-        this.wake(level, e);
+        this.wake(level, e, callbacks);
       } else {
         return;
       }
@@ -344,7 +357,7 @@ export class EnemyManager {
     }
   }
 
-  hitEnemy(e, dmg, dx, dz, hitY, ctx) {
+  hitEnemy(e, dmg, dx, dz, hitY, ctx, head = false) {
     if (e.hp <= 0 || e.inv > 0) return;
     const { level, physics, callbacks } = ctx;
     e.duck = false;
@@ -352,11 +365,12 @@ export class EnemyManager {
     e.flash = 0.08;
     e.flinch = 1.0;
     e.stun = 0.16;
-    this.wake(level, e);
+    this.wake(level, e, callbacks);
     callbacks.puff(e.x, hitY ?? 1.25, e.z, 7, '#b3261e', 5.5, 0.45);
 
     if (e.hp <= 0) {
-      callbacks.onEnemyKilled(e);
+      e.flash = 0;
+      callbacks.onEnemyKilled(e, head);
       if (e.phys) {
         physics.queueRemoveBody(e.phys.rb);
         e.phys = null;
@@ -366,11 +380,19 @@ export class EnemyManager {
         u.glint.visible = false;
         u.gun.visible = false;
         u.mat.emissive.setHex(0);
+        if (u.coatMat) u.coatMat.emissive.setHex(0);
         u.pose = null;
         u.strike = 0;
 
         const scale = CHAR_STYLES[e.type]?.scale || 1;
         const dirSign = dx !== undefined && dx * Math.cos(e.ang) + dz * Math.sin(e.ang) > 0 ? -1 : 1;
+        callbacks.poseCorpse?.(e.mesh, dirSign);
+
+        if ((head || dmg >= 34) && u.hatMesh && u.hatMesh.visible) {
+          u.hatMesh.visible = false;
+          callbacks.spawnFlyingHat?.(e.type, e.x, (e.ht || 1.75) * 0.92, e.z, dx || 0, dz || 0);
+        }
+
         physics.spawnCorpseBody(
           e.mesh,
           e.x,

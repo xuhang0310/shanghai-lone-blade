@@ -98,11 +98,14 @@ export class PropsBuilder {
       partSpec(G.box, '#191c24', [0, 0.78, -1.52], [1.44, 0.42, 0.92], [0.22, 0, 0]), // fastback trunk
       partSpec(G.box, '#b8bcc4', [0, 0.38, 2.12], [1.72, 0.09, 0.1]),            // front chrome bumper
       partSpec(G.box, '#b8bcc4', [0, 0.38, -2.1], [1.72, 0.09, 0.1]),            // rear chrome bumper
-      // Swept fenders
+      // Swept fenders & running boards
       partSpec(G.box, '#12151c', [-0.78, 0.62, 1.15], [0.34, 0.24, 1.25]),
       partSpec(G.box, '#12151c', [0.78, 0.62, 1.15], [0.34, 0.24, 1.25]),
       partSpec(G.box, '#12151c', [-0.78, 0.62, -1.25], [0.34, 0.24, 1.15]),
       partSpec(G.box, '#12151c', [0.78, 0.62, -1.25], [0.34, 0.24, 1.15]),
+      partSpec(G.box, '#b8bcc4', [-0.88, 0.28, -0.05], [0.16, 0.05, 1.38]),
+      partSpec(G.box, '#b8bcc4', [0.88, 0.28, -0.05], [0.16, 0.05, 1.38]),
+      partSpec(G.sphLo, '#dcdfe6', [0, 1.07, 1.78], [0.04, 0.04, 0.09]),        // chrome hood ornament
       // Spare tire mounted at rear
       partSpec(G.cyl, '#141416', [0, 0.82, -2.06], [0.36, 0.18, 0.36], [Math.PI / 2, 0, 0])
     ];
@@ -123,9 +126,25 @@ export class PropsBuilder {
     const p = this.assets.procTex;
     this.mats = {
       vertexLit: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.15 }),
+      carPaint: new THREE.MeshPhysicalMaterial({
+        vertexColors: true,
+        roughness: 0.24,
+        metalness: 0.42,
+        clearcoat: 0.92,
+        clearcoatRoughness: 0.14,
+        envMapIntensity: 2.1
+      }),
       burlap: new THREE.MeshStandardMaterial({ vertexColors: true, map: p.burlap, roughness: 0.92 }),
       headlight: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff1c4).multiplyScalar(1.9), toneMapped: false }),
-      plankDebris: new THREE.MeshStandardMaterial({ map: p.plank, roughness: 0.82 })
+      taillight: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff2818).multiplyScalar(1.8), toneMapped: false }),
+      plankDebris: new THREE.MeshStandardMaterial({ map: p.plank, roughness: 0.82 }),
+      steam: new THREE.SpriteMaterial({
+        map: p.glow,
+        color: 0xaabed8,
+        transparent: true,
+        opacity: 0.09,
+        depthWrite: false
+      })
     };
   }
 
@@ -212,8 +231,10 @@ export class PropsBuilder {
       }
     }
 
-    // 2. Street Lamps + Volumetric Light Cones
-    for (const l of level.lamps) {
+    // 2. Street Lamps + Volumetric Light Cones + Alley Steam
+    const steamSprites = [];
+    for (let li = 0; li < level.lamps.length; li++) {
+      const l = level.lamps[li];
       const lm = this.assets.glb.lamp.clone();
       const ry = Math.random() < 0.5 ? 0 : Math.PI;
       lm.position.set(l.x, 0, l.z);
@@ -240,7 +261,16 @@ export class PropsBuilder {
       cone.position.set(l.lx, l.ly - 2.15, l.lz);
       worldGroup.add(cone);
 
-      physics.addStaticBox(l.x, 1.8, l.z, 0.18, 1.8, 0.18, 0, { kind: 'lamp' }, GROUP_WORLD);
+      if (li % 2 === 0 && steamSprites.length < 8) {
+        const stm = new THREE.Sprite(this.mats.steam);
+        stm.position.set(l.x + rnd(-0.8, 0.8), 0.9, l.z + rnd(-0.8, 0.8));
+        stm.scale.set(2.6, 1.8, 1);
+        stm.userData = { baseX: stm.position.x, baseY: 0.9, ph: rnd(0, Math.PI * 2) };
+        worldGroup.add(stm);
+        steamSprites.push(stm);
+      }
+
+      physics.addStaticBox(l.x, 1.8, l.z, 0.18, 1.8, 0.18, 0, { kind: 'metal' }, GROUP_WORLD);
     }
 
     // 3. Swinging Overhead Red Lanterns with Spherical Joints
@@ -326,7 +356,7 @@ export class PropsBuilder {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
         grp.rotation.y = p.rotY;
-        const body = new THREE.Mesh(this.templates.truck, this.mats.vertexLit);
+        const body = new THREE.Mesh(this.templates.truck, this.mats.carPaint);
         body.castShadow = true;
         body.receiveShadow = true;
         grp.add(body);
@@ -351,13 +381,13 @@ export class PropsBuilder {
         const toWorld = (lx, lz) => [p.x + lx * cos + lz * sin, p.z - lx * sin + lz * cos];
         const [cabX, cabZ] = toWorld(0, 0.95);
         const [bedX, bedZ] = toWorld(0, -1.28);
-        physics.addStaticBox(cabX, 1.05, cabZ, 0.96, 1.05, 1.32, p.rotY, { kind: 'prop' }, GROUP_PROP);
+        physics.addStaticBox(cabX, 1.05, cabZ, 0.96, 1.05, 1.32, p.rotY, { kind: 'metal' }, GROUP_PROP);
         physics.addStaticBox(bedX, 0.49, bedZ, 1.02, 0.49, 1.24, p.rotY, { kind: 'prop' }, GROUP_PROP);
       } else if (p.kind === 'sedan') {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
         grp.rotation.y = p.rotY;
-        const body = new THREE.Mesh(this.templates.sedan, this.mats.vertexLit);
+        const body = new THREE.Mesh(this.templates.sedan, this.mats.carPaint);
         body.castShadow = true;
         body.receiveShadow = true;
         grp.add(body);
@@ -373,12 +403,18 @@ export class PropsBuilder {
           beam.rotation.x = -Math.PI / 2 - 0.08;
           grp.add(beam);
         }
+        for (const tx of [-0.58, 0.58]) {
+          const tail = new THREE.Mesh(G.sphLo, this.mats.taillight);
+          tail.scale.set(0.06, 0.06, 0.04);
+          tail.position.set(tx, 0.66, -2.06);
+          grp.add(tail);
+        }
         worldGroup.add(grp);
-        physics.addStaticBox(p.x, 0.72, p.z, 0.92, 0.72, 2.1, p.rotY, { kind: 'prop' }, GROUP_PROP);
+        physics.addStaticBox(p.x, 0.72, p.z, 0.92, 0.72, 2.1, p.rotY, { kind: 'metal' }, GROUP_PROP);
       }
     }
 
-    return { tileMesh, tileColliders, barrelsByTile };
+    return { tileMesh, tileColliders, barrelsByTile, steamSprites };
   }
 
   spawnCrateFracture(worldGroup, physics, wx, wz, hitDirX, hitDirY, hitDirZ, isTall) {

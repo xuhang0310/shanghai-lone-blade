@@ -273,15 +273,16 @@ export class CharacterFactory {
     const p = d.data;
     const mask = meta.maskData;
 
-    const sh = new THREE.Color(s.shirt);
-    const pa = new THREE.Color(s.pants);
-    const sleeveCol = new THREE.Color(s.coat || s.shirt);
-    const vestCol = new THREE.Color(s.vest || s.shirt);
-    const tieCol = new THREE.Color(s.tie || '#7a1c18');
-    const hairCol = new THREE.Color('#191412');
-    const gloveCol = new THREE.Color('#181615');
-    const cuffCol = new THREE.Color('#e2dcd0');
-    const shirtWhite = new THREE.Color('#dfd9cd');
+    const srgbCol = hex => new THREE.Color(hex).convertLinearToSRGB();
+    const sh = srgbCol(s.shirt);
+    const pa = srgbCol(s.pants);
+    const sleeveCol = srgbCol(s.coat || s.shirt);
+    const vestCol = srgbCol(s.vest || s.shirt);
+    const tieCol = srgbCol(s.tie || '#7a1c18');
+    const hairCol = srgbCol('#191412');
+    const gloveCol = srgbCol('#1c1917');
+    const cuffCol = srgbCol('#e2dcd0');
+    const shirtWhite = srgbCol('#dfd9cd');
 
     const isTailored = !!(s.trench || s.longcoat || s.cloak);
 
@@ -423,13 +424,9 @@ export class CharacterFactory {
     return (this._hairGeo = g);
   }
 
-  _getHatSkinGeo(kind) {
-    if (this.hatCache[kind] !== undefined) return this.hatCache[kind];
-    const s = CHAR_STYLES[kind];
-    if (!s.hat || s.model === 'soldier') return (this.hatCache[kind] = null);
-
+  _buildHatBaseGeo(s) {
     const G = this.gr.G;
-    const hc = s.hatCol;
+    const hc = s.hatCol || '#2a221b';
     const parts = [];
 
     if (s.hat === 'fedora') {
@@ -457,8 +454,36 @@ export class CharacterFactory {
         partSpec(G.box, hc, [0.02, -0.025, -0.134], [0.022, 0.024, 0.09], [0.35, -0.3, 0])
       );
     }
+    return buildColoredGeometry(parts);
+  }
 
-    const baseGeo = buildColoredGeometry(parts);
+  createStandaloneHatMesh(kind) {
+    const s = CHAR_STYLES[kind];
+    if (!s) return null;
+    let geo = null;
+    if (s.hat === 'officer') {
+      geo = this._getOfficerHatGeo();
+    } else if (s.hat) {
+      geo = this._buildHatBaseGeo(s);
+    } else if (s.helmet) {
+      const G = this.gr.G;
+      geo = buildColoredGeometry([
+        partSpec(G.dome, '#565134', [0, -0.02, 0], [0.135, 0.125, 0.145]),
+        partSpec(G.cyl, '#46422a', [0, -0.02, 0], [0.142, 0.016, 0.152])
+      ]);
+    }
+    if (!geo) return null;
+    const m = new THREE.Mesh(geo, this.gr.M.hat);
+    m.castShadow = true;
+    return m;
+  }
+
+  _getHatSkinGeo(kind) {
+    if (this.hatCache[kind] !== undefined) return this.hatCache[kind];
+    const s = CHAR_STYLES[kind];
+    if (!s.hat || s.model === 'soldier') return (this.hatCache[kind] = null);
+
+    const baseGeo = this._buildHatBaseGeo(s);
     // Transform into Male Head bind space: center (-0.001, 0.928, 0.068), pitched forward -0.08 rad
     const xf = new THREE.Matrix4().compose(
       new THREE.Vector3(-0.001, 0.926, 0.068),
@@ -903,10 +928,15 @@ export class CharacterFactory {
 
     const bones = {};
     let bodySkinnedMesh = null;
+    let hatMesh = null;
+    let coatMat = null;
     inner.traverse(o => {
       if (o.isBone && !bones[o.name]) bones[o.name] = o;
       if (o.isMesh) {
-        if (isSoldier && o.name === 'Helmet') o.visible = !!s.helmet;
+        if (isSoldier && o.name === 'Helmet') {
+          o.visible = !!s.helmet;
+          if (o.visible) hatMesh = o;
+        }
         if (o.isSkinnedMesh && (!bodySkinnedMesh || o.name === 'Male')) bodySkinnedMesh = o;
         o.material = mat;
         o.castShadow = true;
@@ -929,7 +959,7 @@ export class CharacterFactory {
 
       const hatGeo = this._getHatSkinGeo(kind);
       if (hatGeo) {
-        const hatMesh = new THREE.SkinnedMesh(hatGeo, this.gr.M.hat);
+        hatMesh = new THREE.SkinnedMesh(hatGeo, this.gr.M.hat);
         hatMesh.castShadow = true;
         hatMesh.frustumCulled = false;
         parentArmature.add(hatMesh);
@@ -938,10 +968,15 @@ export class CharacterFactory {
 
       const outfitGeo = this._getOutfitSkinGeo(kind);
       if (outfitGeo) {
-        const coatMat = new THREE.MeshStandardMaterial({
+        coatMat = new THREE.MeshPhysicalMaterial({
           vertexColors: true,
-          roughness: 0.78,
+          roughness: 0.52,
           metalness: 0.08,
+          clearcoat: 0.58,
+          clearcoatRoughness: 0.26,
+          sheen: 0.32,
+          sheenRoughness: 0.55,
+          sheenColor: new THREE.Color(0x6e88b4),
           side: THREE.DoubleSide
         });
         coatMat.userData.own = true;
@@ -973,6 +1008,7 @@ export class CharacterFactory {
         g.add(hm);
         g.updateMatrixWorld(true);
         bones.Head.attach(hm);
+        hatMesh = hm;
       }
       this._buildSoldierAttachments(kind, g, bones);
     } else {
@@ -1037,6 +1073,9 @@ export class CharacterFactory {
       dk: 0,
       bones,
       mat,
+      coatMat,
+      hatMesh,
+      rest,
       gun,
       glint,
       mixer,
@@ -1098,6 +1137,51 @@ export class CharacterFactory {
         this._rotateBoneWorldAxis(u.bones.Head, localPitchAxis, pitchTilt * 0.3);
       }
     }
+  }
+
+  poseCorpse(m, dirSign = 1) {
+    const u = m.userData;
+    u.rate = 0;
+    u.pose = null;
+    u.strike = 0;
+    u.glint.visible = false;
+    u.gun.visible = false;
+    u.mat.emissive.setHex(0);
+    if (u.coatMat) u.coatMat.emissive.setHex(0);
+    m.scale.y = m.scale.x;
+
+    for (const n in u.acts) {
+      const w = n === 'Idle' ? 1 : 0;
+      u.w[n] = w;
+      u.acts[n].setEffectiveWeight(w);
+    }
+    u.mixer.update(0);
+
+    if (u.rest) {
+      for (const n of ARMS) {
+        if (u.bones[n] && u.rest[n]) u.bones[n].quaternion.copy(u.rest[n]);
+      }
+    }
+
+    const tiltBone = (bone, rx, ry, rz) => {
+      if (!bone) return;
+      _q.setFromEuler(new THREE.Euler(rx, ry, rz));
+      bone.quaternion.multiply(_q);
+    };
+
+    // Relax arms splayed outward & relax spine/head/legs so corpse sprawls naturally
+    tiltBone(u.bones.RightArm, 0.25, 0.15, -0.55);
+    tiltBone(u.bones.RightForeArm, 0, -0.35, -0.15);
+    tiltBone(u.bones.LeftArm, -0.2, -0.15, 0.55);
+    tiltBone(u.bones.LeftForeArm, 0, 0.35, 0.15);
+    tiltBone(u.bones.Spine1, dirSign * 0.16, 0, 0);
+    tiltBone(u.bones.Spine2, dirSign * 0.18, 0, 0);
+    tiltBone(u.bones.Neck, dirSign * 0.12, (Math.random() - 0.5) * 0.2, 0);
+    tiltBone(u.bones.Head, dirSign * 0.12, (Math.random() - 0.5) * 0.5, 0);
+    tiltBone(u.bones.LeftUpLeg, -0.32, 0.1, 0.16);
+    tiltBone(u.bones.LeftLeg, 0.42, 0, 0);
+    tiltBone(u.bones.RightUpLeg, -0.1, -0.08, -0.1);
+    m.updateMatrixWorld(true);
   }
 
   _rotateBoneWorldAxis(bone, worldAxis, angle) {

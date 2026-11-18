@@ -14,7 +14,9 @@ import {
 
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
 const _yAxis = new THREE.Vector3(0, 1, 0);
+const _zAxis = new THREE.Vector3(0, 0, 1);
 
 export class PhysicsWorld {
   constructor() {
@@ -329,31 +331,32 @@ export class PhysicsWorld {
   }
 
   spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.5) {
-    const halfH = 0.52 * scale;
-    const r = 0.24 * scale;
+    const halfH = 0.72 * scale;
     _q.setFromAxisAngle(_yAxis, initialYaw);
+    _q2.setFromAxisAngle(_zAxis, dirSign * 0.34);
+    _q.multiply(_q2);
     const rb = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, 0.9 * scale, z)
+        .setTranslation(x, 0.82 * scale, z)
         .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
-        .setLinvel(pushX * slideImpulse, 1.4, pushZ * slideImpulse)
+        .setLinvel(pushX * slideImpulse, 1.3, pushZ * slideImpulse)
         .setAngvel({
-          x: pushZ * dirSign * 4.5 + (Math.random() - 0.5) * 2,
-          y: (Math.random() - 0.5) * 3,
-          z: -pushX * dirSign * 4.5 + (Math.random() - 0.5) * 2
+          x: pushZ * 6.0 + (Math.random() - 0.5) * 1.6,
+          y: (Math.random() - 0.5) * 2.5,
+          z: -pushX * 6.0 + (Math.random() - 0.5) * 1.6
         })
-        .setLinearDamping(1.1)
-        .setAngularDamping(1.8)
+        .setLinearDamping(1.2)
+        .setAngularDamping(2.2)
     );
     const col = this.world.createCollider(
-      RAPIER.ColliderDesc.capsule(halfH, r)
-        .setDensity(1.5)
-        .setFriction(0.85)
-        .setRestitution(0.08)
+      RAPIER.ColliderDesc.cuboid(0.15 * scale, halfH, 0.27 * scale)
+        .setDensity(1.6)
+        .setFriction(0.88)
+        .setRestitution(0.04)
         .setCollisionGroups(makeCollisionGroups(GROUP_DEBRIS, GROUP_WORLD | GROUP_PROP | GROUP_DEBRIS)),
       rb
     );
-    // Offset visual mesh so its center around waist (y=0.9*scale) aligns with capsule center
+    // Align waist pivot (~0.82*scale) cleanly so sprawled corpse rests flat on wet ground
     const link = {
       body: rb,
       col,
@@ -361,7 +364,7 @@ export class PhysicsWorld {
       life: 24,
       maxLife: 24,
       fade: true,
-      localOffset: new THREE.Vector3(0, -0.9 * scale, 0)
+      localOffset: new THREE.Vector3(0, -0.82 * scale, 0)
     };
     this.dynamicLinks.push(link);
     return link;

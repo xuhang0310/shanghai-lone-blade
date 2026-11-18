@@ -41,7 +41,7 @@ export class InputManager {
     window.addEventListener('keydown', e => {
       if (e.target.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
       this.keys[e.code] = true;
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyP') { this.cb.onPause?.(); return; }
       if (e.repeat) return;
       this.cb.onKeyDown?.(e.code);

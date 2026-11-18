@@ -68,6 +68,11 @@ let banner = 0;
 let flowT = 0;
 let msg = '';
 let msgT = 0;
+let radioMsg = '';
+let radioT = 0;
+let lightningT = 6.5;
+let lightningFlash = 0;
+let steamSprites = [];
 let shake = 0;
 let hurtFlash = 0;
 let hurtAng = null;
@@ -101,6 +106,11 @@ function getCol(c) {
 function say(t) {
   msg = t;
   msgT = 2.1;
+}
+
+function radio(t, dur = 4.2) {
+  radioMsg = t;
+  radioT = dur;
 }
 
 function saveBest() {
@@ -381,6 +391,28 @@ function spawnCasing(x, y, z, vx, vz) {
   m.userData = { x, y, z, vx, vz, vy: rnd(1.5, 2.8), t: 0, b: 0 };
 }
 
+function spawnFlyingHat(kind, x, y, z, dx, dz) {
+  const hat = cf.createStandaloneHatMesh(kind);
+  if (!hat) return;
+  worldGroup.add(hat);
+  physics.spawnDynamicDebris(
+    hat,
+    x,
+    y,
+    z,
+    0.13,
+    0.06,
+    0.14,
+    (dx || 0) * 3.8 + rnd(-1.4, 1.4),
+    rnd(2.8, 4.4),
+    (dz || 0) * 3.8 + rnd(-1.4, 1.4),
+    rnd(-9, 9),
+    rnd(-7, 7),
+    rnd(-9, 9),
+    8.0
+  );
+}
+
 function spawnLive(type, x, z, fx, fz) {
   const e = level.spawnEnemy(type, x, z, 99);
   if (level.boxHit(e.x, e.z, e.r)) {
@@ -406,13 +438,17 @@ function makeLogicCtx() {
       spawnGrenade,
       spawnLive,
       say,
+      radio,
+      poseCorpse: (m, dirSign) => cf.poseCorpse(m, dirSign),
+      spawnFlyingHat,
       addShake: v => { shake = Math.max(shake, v); },
       shootBullet,
       puff,
       dropAt,
       explode,
-      onEnemyKilled: e => {
+      onEnemyKilled: (e, head) => {
         kills++;
+        P.focus = Math.min(100, P.focus + (head ? 24 : 14));
         score += (e.type === 'boss' ? 2000 : e.type === 'officer' ? 300 : e.type === 'gunner' ? 200 : e.type === 'soldier' ? 150 : e.type === 'gunman' ? 100 : 50);
         decal(e.x, e.z, e.r * 1.4, false);
         puff(e.x, 1.1, e.z, 14, '#8e1a14', 7.5, 0.6);
@@ -495,6 +531,7 @@ function buildLevelWorld(lvlIndex) {
   tileMesh = propRes.tileMesh;
   tileColliders = propRes.tileColliders;
   barrelsByTile = propRes.barrelsByTile;
+  steamSprites = propRes.steamSprites || [];
 
   // Exit beacon
   exitMesh = null;
@@ -569,6 +606,12 @@ function buildLevelWorld(lvlIndex) {
   shake = 0;
   hurtFlash = 0;
   flowT = 0;
+  lampT = 0;
+  radioT = 0;
+  lightningT = 6.5;
+  lightningFlash = 0;
+  P.bulletTime = false;
+  P.btK = 0;
   overMsg = '';
   level.computeFlow(P.x, P.z);
 }
@@ -581,6 +624,7 @@ function startLevel(idx) {
   input.lockPointer();
   audio.startRain();
   audio.playMusic(level.cfg.music);
+  if (level.cfg.intro) radio(level.cfg.intro, 5.2);
 }
 
 function newGame() {
@@ -604,7 +648,7 @@ function menu() {
     '<div class="sub">Shanghai · 1937</div><h1>沪上孤枪</h1>' +
     '<p>黑龙帮盘踞闸北，码头夜夜卸下军火。<b>一个人，四把枪，三条街。</b>打穿弄堂、码头与货仓，了结帮主“黑龙”。</p>' +
     '<div class="keys"><span>WASD</span><span>移动</span><span>鼠标</span><span>转动视角，左键开火，按住右键举枪瞄准</span><span>G · F</span><span>手雷 · 燃烧瓶（真实物理反弹/碎裂）</span>' +
-    '<span>1 2 3 4 / Q</span><span>驳壳枪、冲锋枪、霰弹枪、步枪</span><span>空格 · Shift · C</span><span>跳跃（可跳上木箱/卡车）· 翻滚 · 蹲下</span><span>R · P · M · H</span><span>换弹 · 暂停 · 音乐 · 画质切换（实时倒影/AO/辉光）</span>' +
+    '<span>1 2 3 4 / Q</span><span>驳壳枪、冲锋枪、霰弹枪、步枪</span><span>空格 · Shift · C</span><span>跳跃（可跳上木箱/卡车）· 翻滚 · 蹲下</span><span>Tab / V</span><span>子弹时间（放慢世界 0.28x，爆头击杀快速回复专注度）</span><span>R · P · M · H</span><span>换弹 · 暂停 · 音乐 · 画质切换（实时倒影/AO/辉光）</span>' +
     '<span>触屏</span><span>左半屏移动，右半屏滑动转向，瞄准敌人自动开火</span></div>' +
     (best ? `<p>最高分 <b>${best}</b></p>` : '') +
     '<p class="credit">引擎：Three.js r187 + Rapier3D WASM 物理引擎<br>模型与贴图：Poly Haven、OpenGameArt（CC0）　枪声：The Free Firearm Sound Library（CC0）<br>音乐：“Night on the Docks – Sax” Kevin MacLeod（CC BY 4.0）、“Noire Crime Time” withthelove（CC BY 3.0）、“Jazz Saxaphone”（CC0）</p>',
@@ -669,16 +713,44 @@ function togglePause() {
 }
 
 function updatePlay(dt) {
-  time += dt;
+  if (P.bulletTime) {
+    P.focus = Math.max(0, P.focus - dt * 22);
+    if (P.focus <= 0) {
+      P.bulletTime = false;
+      audio.sfx('slowoff');
+    }
+  } else {
+    P.focus = Math.min(100, P.focus + dt * 6.5);
+  }
+  P.btK += ((P.bulletTime ? 1 : 0) - P.btK) * Math.min(1, dt * 12);
+  const simDt = P.bulletTime ? dt * 0.28 : dt;
+  const playerDt = P.bulletTime ? dt * 0.52 : dt;
+
+  time += simDt;
   if (banner > 0) banner -= dt;
   if (msgT > 0) msgT -= dt;
+  if (radioT > 0) radioT -= dt;
   if (shake > 0) shake = Math.max(0, shake - dt * 2.5);
   if (hurtFlash > 0) hurtFlash -= dt;
   if (hitMark > 0) hitMark -= dt;
   if (killMark > 0) killMark -= dt;
   if (headMark > 0) headMark -= dt;
 
-  P.updateMovement(dt, input, physics, audio, (x, y, z) => {
+  lightningT -= simDt;
+  if (lightningT <= 0) {
+    lightningT = rnd(11, 22);
+    lightningFlash = 1.0;
+    const delayMs = rnd(280, 680);
+    setTimeout(() => {
+      if (state === 'play' || state === 'menu') {
+        audio.sfx('thunder');
+        shake = Math.max(shake, 0.14);
+      }
+    }, delayMs);
+  }
+  if (lightningFlash > 0) lightningFlash = Math.max(0, lightningFlash - dt * 2.2);
+
+  P.updateMovement(playerDt, input, physics, audio, (x, y, z) => {
     puff(x, y + 0.08, z, 8, '#8f8a80', 3.5, 0.4);
   });
 
@@ -701,13 +773,13 @@ function updatePlay(dt) {
           bdf = df;
         }
       }
-      P.ang += clamp(bdf, -dt * 1.2, dt * 1.2);
+      P.ang += clamp(bdf, -playerDt * 1.2, playerDt * 1.2);
     }
   }
 
   const g = WEAPONS[P.gun];
   if (P.reloadT > 0) {
-    P.reloadT -= dt;
+    P.reloadT -= playerDt;
     if (P.reloadT <= 0) {
       const need = g.mag - P.mags[P.gun];
       const take = Math.min(need, P.res[P.gun]);
@@ -764,29 +836,29 @@ function updatePlay(dt) {
     spawnCasing(P.x - s * 0.25, mh, P.z + c * 0.25, -s * 2.4 + rnd(-0.6, 0.6) - c * 0.5, c * 2.4 + rnd(-0.6, 0.6) - s * 0.5);
 
     for (const e of level.enemies) {
-      if (!e.awake && Math.hypot(e.x - P.x, e.z - P.z) < 24) enemyMgr.wake(level, e);
+      if (!e.awake && Math.hypot(e.x - P.x, e.z - P.z) < 24) enemyMgr.wake(level, e, { radio });
     }
   }
 
-  flowT -= dt;
+  flowT -= simDt;
   if (flowT <= 0) {
     flowT = 0.3;
     level.computeFlow(P.x, P.z);
   }
 
   const logicCtx = makeLogicCtx();
-  enemyMgr.update(dt, logicCtx);
+  enemyMgr.update(simDt, logicCtx);
 
   // Advance 3D bullets with Rapier raycast collision
   for (const b of bullets) {
-    b.life -= dt;
+    b.life -= simDt;
     b.px = b.x;
     b.py = b.y;
     b.pz = b.z;
     const sp = Math.hypot(b.vx, b.vz);
-    const stepLen = Math.hypot(sp, b.vy) * dt;
+    const stepLen = Math.hypot(sp, b.vy) * simDt;
     const subSteps = Math.max(1, Math.ceil(stepLen / 0.4));
-    const ds = dt / subSteps;
+    const ds = simDt / subSteps;
 
     for (let i = 0; i < subSteps && b.life > 0; i++) {
       const nextVy = b.vy - 9.8 * ds;
@@ -820,7 +892,7 @@ function updatePlay(dt) {
             const head = pt.y > eTop - 0.3 * k;
             const mult = (head ? (e.type === 'soldier' ? 1.7 : 2.5) : pt.y < 0.85 * k ? 0.7 : 1) * clamp(1 - (b.dist - 22) / 70, 0.5, 1);
             const dirLen = Math.hypot(b.vx, b.vz) || 1;
-            enemyMgr.hitEnemy(e, b.dmg * mult, b.vx / dirLen, b.vz / dirLen, pt.y, logicCtx);
+            enemyMgr.hitEnemy(e, b.dmg * mult, b.vx / dirLen, b.vz / dirLen, pt.y, logicCtx, head);
             level.moveEnt(e, (b.vx / dirLen) * 0.16, (b.vz / dirLen) * 0.16);
             hitMark = 0.16;
             if (head) headMark = 0.3;
@@ -835,13 +907,20 @@ function updatePlay(dt) {
           if (broken) audio.sfx('glass');
           b.life = 0;
           break;
+        } else if (meta?.kind === 'metal') {
+          puff(pt.x, pt.y, pt.z, 9, '#ffe296', 8.5, 0.22);
+          audio.sfx('ricochet');
+          bulletHole(pt.x, pt.y, pt.z, n.x, n.y, n.z);
+          b.life = 0;
+          break;
         } else if (meta?.kind === 'barrel') {
           const rb = hit.collider.parent();
           if (rb) {
             rb.wakeUp();
             rb.applyImpulseAtPoint({ x: (dx / segLen) * 4.5, y: 0.6, z: (dz / segLen) * 4.5 }, pt, true);
           }
-          puff(pt.x, pt.y, pt.z, 5, '#ffd27a', 6, 0.18);
+          puff(pt.x, pt.y, pt.z, 7, '#ffd27a', 7.2, 0.2);
+          audio.sfx('ricochet');
           damageTile(meta.tx, meta.tz, b.dmg, dx / segLen, dy / segLen, dz / segLen);
           b.life = 0;
           break;
@@ -851,10 +930,10 @@ function updatePlay(dt) {
           b.life = 0;
           break;
         } else {
-          // Ground or stone/brick wall impact
+          // Ground wet splash or stone/brick wall impact
           if (pt.y < 0.05) {
-            puff(pt.x, 0.06, pt.z, 4, '#8f8a80', 3.0, 0.5);
-            if (Math.random() < 0.5) puff(pt.x, 0.08, pt.z, 2, '#ffd27a', 5.5, 0.14);
+            puff(pt.x, 0.06, pt.z, 5, '#9ec4eb', 3.6, 0.42);
+            if (Math.random() < 0.45) puff(pt.x, 0.08, pt.z, 2, '#ffd27a', 5.5, 0.14);
             decal(pt.x, pt.z, 0.07, true);
           } else {
             puff(pt.x, pt.y, pt.z, 5, '#ffd27a', 7.0, 0.16);
@@ -900,8 +979,8 @@ function updatePlay(dt) {
       nades.splice(i, 1);
       continue;
     }
-    n.data.t += dt;
-    if (n.data.bounceCd > 0) n.data.bounceCd -= dt;
+    n.data.t += simDt;
+    if (n.data.bounceCd > 0) n.data.bounceCd -= simDt;
     if (!n.isMolotov && n.data.t >= 2.2) {
       n.dead = true;
       n.mesh.visible = false;
@@ -913,16 +992,16 @@ function updatePlay(dt) {
 
   // Burning ground
   for (const f of fires) {
-    f.t += dt;
-    f.pt -= dt;
+    f.t += simDt;
+    f.pt -= simDt;
     if (parts.length < 520) {
       puff(f.x + rnd(-2.2, 2.2), rnd(0.12, 0.75), f.z + rnd(-2.2, 2.2), 2, Math.random() < 0.5 ? '#ff8a2a' : '#ffd060', 1.4, 0.55);
     }
     for (const e of level.enemies) {
       if (e.hp > 0 && Math.hypot(e.x - f.x, e.z - f.z) < 2.75) {
         e.flash = 0.05;
-        enemyMgr.wake(level, e);
-        if (e.hp > 26 * dt) e.hp -= 26 * dt;
+        enemyMgr.wake(level, e, logicCtx);
+        if (e.hp > 26 * simDt) e.hp -= 26 * simDt;
         else enemyMgr.hitEnemy(e, 99, 0, -1, 1.0, logicCtx);
       }
     }
@@ -944,20 +1023,21 @@ function updatePlay(dt) {
         score += 300;
         audio.sfx('pick');
         say('联络人已解救，带他去北面出口！');
+        radio('地下联络人：「多谢了，兄弟！这条弄堂出口就在北面，我们走！」', 4.2);
       }
     } else if (hd > 2.9) {
       const f =
         hd < 5.6 && level.los(hostage.x, hostage.z, P.x, P.z)
           ? [(P.x - hostage.x) / hd, (P.z - hostage.z) / hd]
           : level.flowDir(hostage) || [(P.x - hostage.x) / hd, (P.z - hostage.z) / hd];
-      level.moveEnt(hostage, f[0] * 7.5 * dt, f[1] * 7.5 * dt);
+      level.moveEnt(hostage, f[0] * 7.5 * simDt, f[1] * 7.5 * simDt);
       hostage.ang = Math.atan2(f[1], f[0]);
       hostage.moving = true;
     }
   }
 
   if (level.cfg.mission === 'demo' && planted < 3) {
-    timeLeft -= dt;
+    timeLeft -= simDt;
     if (timeLeft <= 0) {
       timeLeft = 0;
       overMsg = '时间到了，军火已经运出码头。';
@@ -967,16 +1047,19 @@ function updatePlay(dt) {
     for (const c of level.charges) {
       if (c.done) continue;
       if (Math.hypot(c.x - P.x, c.z - P.z) < 2.6) {
-        c.k += dt / 2.2;
+        c.k += simDt / 2.2;
         if (c.k >= 1) {
           c.done = true;
           planted++;
           score += 250;
           audio.sfx('pick');
           say(planted < 3 ? `炸药已安放 ${planted} / 3` : '全部安放完毕，撤到北面出口！');
+          if (planted >= 3) {
+            radio('沈孤鸿：「三处雷管全已就位，引信快烧到底了——撤出码头！」', 4.2);
+          }
         }
       } else {
-        c.k = Math.max(0, c.k - dt);
+        c.k = Math.max(0, c.k - simDt);
       }
     }
   }
@@ -985,18 +1068,18 @@ function updatePlay(dt) {
   for (const m of casePool) {
     if (!m.visible) continue;
     const u = m.userData;
-    u.t += dt;
+    u.t += simDt;
     if (u.t > 7) {
       m.visible = false;
       continue;
     }
     if (u.b < 3) {
-      u.vy -= 9.8 * dt;
-      u.x += u.vx * dt;
-      u.y += u.vy * dt;
-      u.z += u.vz * dt;
-      m.rotation.x += dt * 15;
-      m.rotation.z += dt * 9;
+      u.vy -= 9.8 * simDt;
+      u.x += u.vx * simDt;
+      u.y += u.vy * simDt;
+      u.z += u.vz * simDt;
+      m.rotation.x += simDt * 15;
+      m.rotation.z += simDt * 9;
       if (u.y < 0.014) {
         u.y = 0.014;
         u.b++;
@@ -1012,7 +1095,7 @@ function updatePlay(dt) {
 
   // Pickups
   for (const p of pickups) {
-    p.t += dt;
+    p.t += simDt;
     if (Math.hypot(p.x - P.x, p.z - P.z) < 1.55) {
       const tp = p.type;
       if (tp === 'med') {
@@ -1050,11 +1133,11 @@ function updatePlay(dt) {
 
   // Particles
   for (const p of parts) {
-    p.life -= dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.z += p.vz * dt;
-    p.vy -= 18 * dt;
+    p.life -= simDt;
+    p.x += p.vx * simDt;
+    p.y += p.vy * simDt;
+    p.z += p.vz * simDt;
+    p.vy -= 18 * simDt;
     if (p.y < 0.04) {
       p.y = 0.04;
       p.vx = p.vy = p.vz = 0;
@@ -1063,7 +1146,7 @@ function updatePlay(dt) {
   parts = parts.filter(p => p.life > 0);
 
   // Step Rapier physics world
-  physics.step(dt, worldGroup);
+  physics.step(simDt, worldGroup);
 
   if (
     state === 'play' &&
@@ -1114,9 +1197,15 @@ function syncScene(dt) {
     if (f) gr.fireLight.position.set(f.x, 1.1, f.z);
   }
 
+  for (const s of steamSprites) {
+    const u = s.userData;
+    s.position.x = u.baseX + Math.sin(time * 0.65 + u.ph) * 0.45;
+    s.position.y = u.baseY + Math.sin(time * 0.9 + u.ph) * 0.12;
+  }
+
   for (const e of level.enemies) {
     const m = e.mesh;
-    if (!m) continue;
+    if (!m || e.hp <= 0) continue;
     const far = Math.hypot(e.x - P.x, e.z - P.z) > 68;
     m.visible = !far;
     if (far) continue;
@@ -1125,6 +1214,7 @@ function syncScene(dt) {
     u.strike = u.melee ? clamp((e.cd - 0.45) / 0.3, 0, 1) : 0;
     cf.poseMesh(m, e.x, e.z, e.ang, e.awake && e.moving ? (e.spd < 2.8 ? 'Walk' : 'Run') : 'Idle', dt, 0, e.flinch || 0);
     u.mat.emissive.setHex(e.flash > 0 ? 0xaa3020 : 0);
+    if (u.coatMat) u.coatMat.emissive.setHex(e.flash > 0 ? 0x551810 : 0);
     u.glint.visible = e.aimT > 0 || e.burst > 0 || e.callT > 0;
     u.dk += ((e.duck ? 1 : 0) - u.dk) * Math.min(1, dt * 9);
     m.scale.y = m.scale.x * (1 - 0.4 * u.dk);
@@ -1137,7 +1227,7 @@ function syncScene(dt) {
     if (!b) { m.visible = false; continue; }
     m.visible = true;
     m.material = b.pl ? gr.M.pBullet : gr.M.eBullet;
-    const L = Math.min(5.5, Math.max(0.55, Math.hypot(b.x - b.px, b.z - b.pz)));
+    const L = Math.min(8.5, Math.max(0.55, Math.hypot(b.x - b.px, b.z - b.pz) * (1 + (P.btK || 0) * 1.4)));
     m.position.set((b.x + b.px) * 0.5, (b.y + b.py) * 0.5, (b.z + b.pz) * 0.5);
     m.rotation.set(0, -b.ang, Math.atan2(b.vy, Math.hypot(b.vx, b.vz)));
     m.scale.set(L, b.pl ? 0.018 : 0.03, b.pl ? 0.018 : 0.03);
@@ -1192,7 +1282,11 @@ function syncScene(dt) {
 
   P.updateCamera(gr.camera, gr.baseFov, state, time, muzzle, shake, physics);
 
-  // Lights
+  // Lights & thunderstorm double-pulse lightning
+  const lf = lightningFlash;
+  const pulse = lf > 0 ? (lf > 0.65 ? Math.sin(((lf - 0.65) / 0.35) * Math.PI) : lf < 0.5 ? Math.sin((lf / 0.5) * Math.PI) * 0.65 : 0.15) : 0;
+  gr.sun.intensity = 2.4 + pulse * 8.5;
+  gr.hemi.intensity = 0.95 + pulse * 1.6;
   gr.sun.position.set(P.x + 24, 46, P.z + 16);
   gr.sun.target.position.set(P.x, 0, P.z);
   gr.moon.position.set(gr.camera.position.x + 110, 95, gr.camera.position.z - 230);
@@ -1203,11 +1297,18 @@ function syncScene(dt) {
     const near = level.lamps
       .slice()
       .sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z - 3.7) - Math.hypot(b.x - P.x, b.z - P.z - 3.7));
+    if (near[0]) {
+      gr.heroSpot.position.set(near[0].lx, near[0].ly - 0.15, near[0].lz);
+      gr.heroSpot.target.position.set(near[0].lx, 0, near[0].lz);
+      gr.heroSpot.intensity = 42;
+    } else {
+      gr.heroSpot.intensity = 0;
+    }
     for (let i = 0; i < gr.lampLights.length; i++) {
       const l = near[i];
       if (l) {
         gr.lampLights[i].position.set(l.lx, l.ly - 0.25, l.lz);
-        gr.lampLights[i].intensity = 32;
+        gr.lampLights[i].intensity = i === 0 ? 8 : 32;
       } else {
         gr.lampLights[i].intensity = 0;
       }
@@ -1260,7 +1361,8 @@ function frame(ts) {
     physics.step(dt, worldGroup);
   }
 
-  syncScene(dt);
+  const sceneDt = state === 'play' && P.bulletTime ? dt * 0.28 : dt;
+  syncScene(sceneDt);
   gr.render();
   hud.draw({
     state,
@@ -1273,6 +1375,8 @@ function frame(ts) {
     banner,
     msg,
     msgT,
+    radioMsg,
+    radioT,
     hurtFlash,
     hurtAng,
     hitMark,
@@ -1340,6 +1444,14 @@ async function boot() {
       } else if (code === 'KeyH') {
         gr.cycleQuality();
         say(`画质：${gr.getQualityLabel()}`);
+      } else if (code === 'Tab' || code === 'KeyV') {
+        if (!P.bulletTime && P.focus >= 15) {
+          P.bulletTime = true;
+          audio.sfx('slowon');
+        } else if (P.bulletTime) {
+          P.bulletTime = false;
+          audio.sfx('slowoff');
+        }
       } else if (code === 'KeyC' || code === 'ControlLeft') {
         P.crouch = !P.crouch;
       }
@@ -1407,6 +1519,9 @@ window.__game = {
       z: P.z,
       ang: P.ang,
       fps,
+      bulletTime: P.bulletTime,
+      focus: Math.round(P.focus),
+      corpses: physics.dynamicLinks.filter(l => l.fade).length,
       bloom: gr?.bloomEnabled ?? false
     };
   },

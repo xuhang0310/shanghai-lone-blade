@@ -199,6 +199,20 @@ export class AudioManager {
       case 'roll': this.noise(0.18, 500, 0.6, 0.12); break;
       case 'crate': this.noise(0.16, 680, 0.65, 0.34); this.tone(160, 75, 0.1, 0.18, 'triangle'); break;
       case 'glass': this.noise(0.14, 3600, 1.8, 0.22, 'highpass'); this.tone(3200, 1800, 0.08, 0.12); break;
+      case 'thunder':
+        this.noise(1.6, 135, 0.55, 0.65, 'lowpass');
+        this.tone(68, 24, 1.1, 0.38, 'sine');
+        setTimeout(() => this.AC && this.noise(1.1, 210, 0.7, 0.4, 'lowpass'), 220);
+        break;
+      case 'ricochet':
+        this.tone(rnd(2600, 3400), rnd(900, 1400), 0.11, 0.14, 'triangle');
+        break;
+      case 'slowon':
+        this.tone(240, 78, 0.22, 0.2, 'sine');
+        break;
+      case 'slowoff':
+        this.tone(85, 250, 0.18, 0.16, 'sine');
+        break;
       case 'win':
         this.tone(440, 880, 0.3, 0.2, 'triangle');
         setTimeout(() => this.AC && this.tone(660, 1320, 0.4, 0.2, 'triangle'), 160);

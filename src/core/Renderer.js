@@ -192,7 +192,7 @@ export class GameRenderer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 420);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 560);
 
     // Planar reflection target for puddles & river
     this.reflectRT = new THREE.WebGLRenderTarget(512, 512, { type: THREE.HalfFloatType });
@@ -240,6 +240,15 @@ export class GameRenderer {
     this.boomLight = new THREE.PointLight(0xff9a40, 0, 36, 1.4);
     this.fireLight = new THREE.PointLight(0xff7a22, 0, 18, 1.5);
     this.scene.add(this.muzzleLight, this.boomLight, this.fireLight);
+
+    this.heroSpot = new THREE.SpotLight(0xffb868, 0, 25, Math.PI * 0.44, 0.58, 1.35);
+    this.heroSpot.castShadow = true;
+    this.heroSpot.shadow.mapSize.set(1024, 1024);
+    this.heroSpot.shadow.camera.near = 0.6;
+    this.heroSpot.shadow.camera.far = 24;
+    this.heroSpot.shadow.bias = -0.0008;
+    this.heroSpot.shadow.normalBias = 0.03;
+    this.scene.add(this.heroSpot, this.heroSpot.target);
 
     this._initEnvironment();
     this._initPostProcessing();
@@ -296,7 +305,13 @@ export class GameRenderer {
       gunSteel: new THREE.MeshStandardMaterial({ color: 0x20232a, roughness: 0.34, metalness: 0.85 }),
       brass: new THREE.MeshStandardMaterial({ color: 0xd4a448, roughness: 0.3, metalness: 0.9 }),
       dark: new THREE.MeshStandardMaterial({ color: 0x121215, roughness: 0.55, metalness: 0.45 }),
-      hat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.74, side: THREE.DoubleSide }),
+      hat: new THREE.MeshPhysicalMaterial({
+        vertexColors: true,
+        roughness: 0.56,
+        clearcoat: 0.48,
+        clearcoatRoughness: 0.28,
+        side: THREE.DoubleSide
+      }),
       skin: new THREE.MeshStandardMaterial({ color: 0xd2aa85, roughness: 0.78 }),
       steel: new THREE.MeshStandardMaterial({ color: 0xcfd3d8, roughness: 0.28, metalness: 0.85 }),
       bulb: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffdfa8).multiplyScalar(1.8), toneMapped: false }),
@@ -496,7 +511,9 @@ export class GameRenderer {
 
     const prevShadow = this.renderer.shadowMap.autoUpdate;
     const prevTarget = this.renderer.getRenderTarget();
-    if (this.sun.shadow.map) this.renderer.shadowMap.autoUpdate = false;
+    if (this.sun.shadow.map && (!this.heroSpot.castShadow || this.heroSpot.shadow.map)) {
+      this.renderer.shadowMap.autoUpdate = false;
+    }
     this.renderer.state.buffers.depth.setTest(true);
     this.renderer.state.buffers.depth.setMask(true);
     this.renderer.setRenderTarget(this.reflectRT);

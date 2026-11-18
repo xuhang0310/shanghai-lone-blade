@@ -195,6 +195,56 @@ function makeSignTexture(text, col, vertical = false) {
   });
 }
 
+function makeSkylineTexture() {
+  return makeCanvasTexture(128, 256, c => {
+    c.fillStyle = '#090f1d';
+    c.fillRect(0, 0, 128, 256);
+    for (let y = 10; y < 248; y += 16) {
+      for (let x = 8; x < 120; x += 14) {
+        const h = ((x * 13 + y * 29) & 15);
+        if (h < 3) {
+          c.fillStyle = 'rgba(255,190,104,0.52)';
+          c.fillRect(x, y, 7, 8);
+        } else if (h < 7) {
+          c.fillStyle = 'rgba(65,98,150,0.22)';
+          c.fillRect(x, y, 7, 8);
+        }
+      }
+    }
+  });
+}
+
+function makeVintagePosterTexture(title, sub, bg, accent) {
+  return makeCanvasTexture(128, 176, c => {
+    c.fillStyle = bg;
+    c.fillRect(0, 0, 128, 176);
+    // Aged rain-stained border
+    c.fillStyle = 'rgba(32,20,10,0.24)';
+    c.fillRect(0, 134, 128, 42);
+    c.fillRect(0, 0, 128, 14);
+    c.strokeStyle = accent;
+    c.lineWidth = 4;
+    c.strokeRect(8, 8, 112, 160);
+    // Decorative vintage frame & figure/headline silhouette
+    c.fillStyle = accent;
+    c.fillRect(18, 20, 92, 26);
+    c.fillStyle = bg;
+    c.font = 'bold 20px "Ma Shan Zheng","KaiTi",serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(title, 64, 33);
+    c.fillStyle = 'rgba(42,28,22,0.82)';
+    c.fillRect(22, 56, 84, 72);
+    c.fillStyle = accent;
+    c.beginPath();
+    c.arc(64, 88, 22, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#241814';
+    c.font = 'bold 14px "Noto Sans SC",sans-serif';
+    c.fillText(sub, 64, 148);
+  });
+}
+
 function makeRiverMaterial(timeUniform) {
   const mat = new THREE.MeshStandardMaterial({
     color: 0x06101a,
@@ -348,8 +398,13 @@ export class ArchitectureBuilder {
       river: makeRiverMaterial(this.gr.timeUniform),
       pierWood: new THREE.MeshStandardMaterial({ map: p.plank, roughness: 0.88, color: 0x62503e }),
       skyDome: new THREE.MeshBasicMaterial({ map: makeSkyDomeTexture(), side: THREE.BackSide, fog: false, depthWrite: false }),
-      skyline: new THREE.MeshBasicMaterial({ color: 0x090f1d, fog: true }),
-      skylineWin: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffbd66).multiplyScalar(1.3), toneMapped: false })
+      skyline: new THREE.MeshBasicMaterial({ map: makeSkylineTexture(), color: 0xffffff, fog: true }),
+      skylineWin: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffbd66).multiplyScalar(1.3), toneMapped: false }),
+      posterMats: [
+        new THREE.MeshStandardMaterial({ map: makeVintagePosterTexture('百乐门', '夜爵士舞', '#c7b899', '#a62c22'), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 }),
+        new THREE.MeshStandardMaterial({ map: makeVintagePosterTexture('申 报', '今夜号外', '#b9ae98', '#222832'), roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1 }),
+        new THREE.MeshStandardMaterial({ map: makeVintagePosterTexture('黑龙令', '悬赏通缉', '#c4aa82', '#7a1c14'), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 })
+      ]
     };
   }
 
@@ -390,6 +445,8 @@ export class ArchitectureBuilder {
     const shikumens = [];
     const awnings = [];
     const aos = [];
+    const posters = [[], [], []];
+    let posterIdx = 0;
 
     for (const r of level.rects) {
       if (r.seawall) {
@@ -481,14 +538,21 @@ export class ArchitectureBuilder {
         aos.push([px, r.border ? 0.02 : 0.15, pz, ry]);
 
         for (let fl = 0; fl < floors; fl++) {
-          if (fl === 0 && !r.border && Math.random() < 0.32) {
-            doors.push([px, 1.32, pz, ry]);
-            if (cfg.style === 'cobble') {
-              shikumens.push([px, 0.14, pz, ry]);
-            } else if (cfg.style === 'plank' && Math.random() < 0.65) {
-              awnings.push([px, 2.95, pz, ry]);
+          if (fl === 0 && !r.border) {
+            const roll = Math.random();
+            if (roll < 0.3) {
+              doors.push([px, 1.32, pz, ry]);
+              if (cfg.style === 'cobble') {
+                shikumens.push([px, 0.14, pz, ry]);
+              } else if (cfg.style === 'plank' && Math.random() < 0.65) {
+                awnings.push([px, 2.95, pz, ry]);
+              }
+              continue;
             }
-            continue;
+            if (roll < 0.54) {
+              posters[posterIdx++ % 3].push([px, 1.56 + rnd(-0.12, 0.12), pz, ry]);
+              continue;
+            }
           }
           const wy = fl * floorH + 1.85;
           wins.push([px, wy, pz, ry, Math.random() < 0.36]);
@@ -526,6 +590,9 @@ export class ArchitectureBuilder {
     this._inst(worldGroup, this.kit.balcony, this.mats.stoneVertex, balconies, 0.0);
     this._inst(worldGroup, this.kit.shikumen, this.mats.stoneVertex, shikumens, 0.0);
     this._inst(worldGroup, this.kit.awning, this.mats.stoneVertex, awnings, 0.0);
+    for (let k = 0; k < 3; k++) {
+      this._inst(worldGroup, G.plane, this.mats.posterMats[k], posters[k], 0.03, 0.72, 0.98);
+    }
     this._inst(worldGroup, G.flat, this.mats.ao, aos, 0.8, TILE, 1, 1.6);
     this._inst(
       worldGroup,
@@ -550,36 +617,45 @@ export class ArchitectureBuilder {
   }
 
   _buildSkyAndSkyline(worldGroup, totalW, totalD) {
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(220, 24, 14), this.mats.skyDome);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(340, 24, 14), this.mats.skyDome);
     sky.position.set(totalW * 0.5, 0, totalD * 0.5);
     worldGroup.add(sky);
 
     const G = this.gr.G;
     const cx = totalW * 0.5;
     const cz = totalD * 0.5;
+    const baseR = Math.max(totalW, totalD) * 0.62 + 92;
+
     for (let i = 0; i < 24; i++) {
       const ang = (i / 24) * Math.PI * 2;
-      const dist = 105 + (i % 3) * 14;
+      const dist = baseR + (i % 3) * 18;
       const bx = cx + Math.cos(ang) * dist;
       const bz = cz + Math.sin(ang) * dist;
-      const w = 10 + (i % 4) * 5;
-      const h = 24 + ((i * 7) % 5) * 9;
+      const w = 13 + (i % 4) * 5;
+      const h = 30 + ((i * 7) % 5) * 10;
       const tower = new THREE.Mesh(G.box, this.mats.skyline);
       tower.scale.set(w, h, w);
       tower.position.set(bx, h * 0.5 - 2, bz);
       tower.lookAt(cx, h * 0.5 - 2, cz);
       worldGroup.add(tower);
 
+      const crown = new THREE.Mesh(G.box, this.mats.skyline);
+      crown.scale.set(w * 0.72, 6, w * 0.72);
+      crown.position.set(bx, h + 1, bz);
+      crown.lookAt(cx, h + 1, cz);
+      worldGroup.add(crown);
+
       if (i % 4 === 0) {
         // Stepped spire / Custom House clocktower silhouette
         const spire = new THREE.Mesh(G.box, this.mats.skyline);
-        spire.scale.set(w * 0.48, 12, w * 0.48);
-        spire.position.set(bx, h + 4, bz);
+        spire.scale.set(w * 0.44, 14, w * 0.44);
+        spire.position.set(bx, h + 10, bz);
+        spire.lookAt(cx, h + 10, cz);
         worldGroup.add(spire);
         const beacon = new THREE.Mesh(G.plane, this.mats.skylineWin);
-        beacon.scale.set(1.8, 1.8, 1);
-        beacon.position.set(bx - Math.cos(ang) * (w * 0.25), h + 4, bz - Math.sin(ang) * (w * 0.25));
-        beacon.lookAt(cx, h + 4, cz);
+        beacon.scale.set(2.2, 2.2, 1);
+        beacon.position.set(bx - Math.cos(ang) * (w * 0.24), h + 10, bz - Math.sin(ang) * (w * 0.24));
+        beacon.lookAt(cx, h + 10, cz);
         worldGroup.add(beacon);
       }
     }
