@@ -6,7 +6,13 @@ export class InputManager {
     this.touchUI = touchUI;
     this.cb = callbacks;
     this.keys = {};
-    this.mouse = { x: 0, y: 0, down: false, right: false };
+    this.mouse = {
+      x: typeof window !== 'undefined' ? window.innerWidth * 0.5 : 640,
+      y: typeof window !== 'undefined' ? window.innerHeight * 0.5 : 360,
+      down: false,
+      right: false,
+      moved: false
+    };
     this.isTouch = false;
     this.locked = false;
     this.touchFire = false;
@@ -67,6 +73,7 @@ export class InputManager {
     document.addEventListener('mousemove', e => {
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
+      this.mouse.moved = true;
       if (this.locked) {
         this.cb.onLookDelta?.(
           clamp(e.movementX, -120, 120) * 0.0023,

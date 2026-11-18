@@ -331,55 +331,68 @@ export class PhysicsWorld {
   }
 
   spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.2) {
-    const halfH = 0.72 * scale;
-    const isHeavy = slideImpulse >= 4.5;
-    const clampedPush = Math.min(3.4, slideImpulse * 0.65);
+    const radius = 0.24 * scale;
+    const ankleH = 0.15 * scale;
     const pLen = Math.hypot(pushX, pushZ);
-    const tx = pLen > 0.05 ? pushX / pLen : -dirSign * Math.cos(-initialYaw);
-    const tz = pLen > 0.05 ? pushZ / pLen : -dirSign * Math.sin(-initialYaw);
-    const toppleRate = isHeavy ? 3.6 : 3.1;
+    let tx = pLen > 0.05 ? pushX / pLen : -dirSign * Math.cos(-initialYaw);
+    let tz = pLen > 0.05 ? pushZ / pLen : -dirSign * Math.sin(-initialYaw);
 
-    // Zero initial Z-tilt + exact 0.82*scale waist pivot = 0.00mm / 0.00° frame-0 snap!
-    _q.setFromAxisAngle(_yAxis, initialYaw);
+    // Deflect fall direction away from nearby walls/crates so upper body lands in open space
+    const backHit = this.castRay(x, 0.95 * scale, z, tx, 0, tz, 1.60 * scale, GROUP_WORLD | GROUP_PROP);
+    if (backHit && backHit.dist < 1.45 * scale) {
+      const sideHit = this.castRay(x, 0.95 * scale, z, -tz, 0, tx, 1.60 * scale, GROUP_WORLD | GROUP_PROP);
+      if (!sideHit || sideHit.dist > backHit.dist + 0.35) {
+        const tmp = tx;
+        tx = -tz;
+        tz = tmp;
+      } else {
+        tx = -tx;
+        tz = -tz;
+      }
+    }
+
+    // Rotation-locked sphere handles grounded slide & wall stop; ankle-pivot gravity curve handles 0-spin fall!
+    const clampedPush = Math.min(2.0, slideImpulse * 0.38);
     const rb = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, 0.82 * scale, z)
-        .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
-        .setLinvel(tx * clampedPush, isHeavy ? 0.16 : 0.08, tz * clampedPush)
-        .setAngvel({
-          x: tz * toppleRate + (Math.random() - 0.5) * 0.3,
-          y: (Math.random() - 0.5) * 0.45,
-          z: -tx * toppleRate + (Math.random() - 0.5) * 0.3
-        })
+        .setTranslation(x, radius, z)
+        .setLinvel(tx * clampedPush, 0, tz * clampedPush)
+        .lockRotations()
         .setCcdEnabled(true)
-        .setLinearDamping(2.6)
-        .setAngularDamping(3.2)
+        .setLinearDamping(3.8)
     );
     const col = this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(0.15 * scale, halfH, 0.27 * scale)
-        .setDensity(2.2)
+      RAPIER.ColliderDesc.ball(radius)
+        .setDensity(2.4)
         .setFriction(0.96)
         .setRestitution(0.0)
-        .setCollisionGroups(makeCollisionGroups(GROUP_DEBRIS, GROUP_WORLD | GROUP_PROP | GROUP_DEBRIS)),
+        .setCollisionGroups(makeCollisionGroups(GROUP_DEBRIS, GROUP_WORLD | GROUP_PROP)),
       rb
     );
     this.colliderMap.set(col.handle, { kind: 'corpse', body: rb, mesh });
-    // Align waist pivot (~0.82*scale) cleanly so sprawled corpse rests flat on wet ground
     const link = {
       body: rb,
       col,
       mesh,
+      isCorpse: true,
       life: 24,
       maxLife: 24,
       fade: true,
-      localOffset: new THREE.Vector3(0, -0.82 * scale, 0)
+      corpseFall: {
+        t: 0,
+        dur: 0.46,
+        initialYaw,
+        axis: new THREE.Vector3(tz, 0, -tx).normalize(),
+        ankleH,
+        radius
+      }
     };
     this.dynamicLinks.push(link);
     return link;
   }
 
   applyExplosionImpulse(x, y, z, radius, strength) {
-    const pushBody = (rb, massMul = 1) => {
+    const pushBody = (rb, massMul = 1, isCorpse = false) => {
       if (!rb) return;
       const t = rb.translation();
       const dx = t.x - x;
@@ -392,7 +405,7 @@ export class PhysicsWorld {
       rb.applyImpulse(
         {
           x: (dx / d) * falloff,
-          y: Math.max(0.35, dy / d + 0.55) * falloff,
+          y: (isCorpse ? 0.06 : Math.max(0.35, dy / d + 0.55)) * falloff,
           z: (dz / d) * falloff
         },
         true
@@ -400,7 +413,7 @@ export class PhysicsWorld {
     };
 
     for (const l of this.dynamicLinks) {
-      if (l.body && l.life > 0) pushBody(l.body, l.fade ? 0.45 : 1.0);
+      if (l.body && l.life > 0) pushBody(l.body, l.isCorpse ? 0.28 : l.fade ? 0.45 : 1.0, !!l.isCorpse);
     }
     for (const h of this.hangingLanterns) {
       if (!h.broken) pushBody(h.lanternBody, 0.35);
@@ -473,6 +486,34 @@ export class PhysicsWorld {
         }
       }
       const p = l.body.translation();
+      if (l.corpseFall) {
+        const cf = l.corpseFall;
+        cf.t = Math.min(cf.dur, cf.t + dt);
+        const u = cf.t / cf.dur;
+        const ease =
+          u < 0.78
+            ? (u / 0.78) * (u / 0.78) * 0.94
+            : 0.94 + 0.06 * Math.sin(((u - 0.78) / 0.22) * (Math.PI * 0.5));
+        _q.setFromAxisAngle(_yAxis, cf.initialYaw);
+        _q2.setFromAxisAngle(cf.axis, ease * 1.527);
+        l.mesh.quaternion.multiplyQuaternions(_q2, _q);
+
+        const cr = l.mesh?.userData?.corpseRelax;
+        if (cr && cr.t < cr.dur) {
+          cr.t = Math.min(cr.dur, cr.t + dt);
+          const k = cr.t / cr.dur;
+          const s = k * k * (3 - 2 * k);
+          for (const tr of cr.tracks) {
+            tr.bone.quaternion.slerpQuaternions(tr.fromQ, tr.toQ, s);
+          }
+        }
+
+        const groundY = p.y - cf.radius;
+        _v.set(0, -cf.ankleH, 0).applyQuaternion(l.mesh.quaternion);
+        l.mesh.position.set(p.x + _v.x, groundY + cf.ankleH + _v.y, p.z + _v.z);
+        continue;
+      }
+
       const r = l.body.rotation();
       l.mesh.quaternion.set(r.x, r.y, r.z, r.w);
       const cr = l.mesh?.userData?.corpseRelax;

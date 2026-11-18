@@ -248,8 +248,8 @@ export class EnemyManager {
 
       if (busy) sp = t.sp * 0.25;
       if (e.sees) {
-        const df = ((toP - e.ang + Math.PI * 3) % TAU) - Math.PI;
-        e.ang += clamp(df, -dt * 6, dt * 6);
+        const df = Math.atan2(Math.sin(toP - e.ang), Math.cos(toP - e.ang));
+        e.ang = Math.atan2(Math.sin(e.ang + clamp(df, -dt * 6, dt * 6)), Math.cos(e.ang + clamp(df, -dt * 6, dt * 6)));
       } else if (vx || vz) {
         e.ang = Math.atan2(vz, vx);
       }

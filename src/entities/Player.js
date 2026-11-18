@@ -199,13 +199,16 @@ export class PlayerController {
   }
 
   updateMovement(dt, input, physics, audio, onLandDust, levelStyle = 'cobble') {
-    // Non-locked keyboard / screen-edge camera yaw
-    if (input.keys.ArrowLeft) this.ang -= dt * 2.4;
-    if (input.keys.ArrowRight) this.ang += dt * 2.4;
-    if (!input.locked && !input.isTouch) {
-      const k = (input.mouse.x / window.innerWidth - 0.5) * 2;
-      const a = Math.abs(k);
-      if (a > 0.25) this.ang += Math.sign(k) * (a - 0.25) * 3.6 * dt;
+    // Non-locked keyboard / gentle outer-edge camera yaw (locked during executions!)
+    if (this.execT <= 0) {
+      if (input.keys.ArrowLeft) this.ang -= dt * 2.2;
+      if (input.keys.ArrowRight) this.ang += dt * 2.2;
+      if (!input.locked && !input.isTouch && input.mouse.moved) {
+        const k = (input.mouse.x / Math.max(1, window.innerWidth) - 0.5) * 2;
+        const a = Math.abs(k);
+        if (a > 0.72) this.ang += Math.sign(k) * (a - 0.72) * 2.2 * dt;
+      }
+      this.ang = Math.atan2(Math.sin(this.ang), Math.cos(this.ang));
     }
 
     this.cd -= dt;
@@ -398,7 +401,7 @@ export class PlayerController {
       const stdDz = stdZ - ec.mz;
       const r0 = Math.max(0.5, Math.hypot(stdDx, stdDz));
       const a0 = Math.atan2(stdDz, stdDx);
-      const da = ((orbAng - a0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const da = Math.atan2(Math.sin(orbAng - a0), Math.cos(orbAng - a0));
       const curAng = a0 + da * ek;
       const curR = r0 + (safeR - r0) * ek;
 

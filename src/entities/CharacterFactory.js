@@ -1391,42 +1391,42 @@ export class CharacterFactory {
 
     const arch = (Math.random() * 4) | 0;
     if (arch === 0) {
-      tiltBone(u.bones.RightArm, 0.25, 0.15, -0.55);
-      tiltBone(u.bones.RightForeArm, 0, -0.35, -0.15);
-      tiltBone(u.bones.LeftArm, -0.2, -0.15, 0.55);
-      tiltBone(u.bones.LeftForeArm, 0, 0.35, 0.15);
-      tiltBone(u.bones.LeftUpLeg, -0.32, 0.1, 0.16);
-      tiltBone(u.bones.LeftLeg, 0.42, 0, 0);
-      tiltBone(u.bones.RightUpLeg, -0.1, -0.08, -0.1);
+      tiltBone(u.bones.RightArm, 0.16, 0.08, -0.28);
+      tiltBone(u.bones.RightForeArm, 0, -0.22, -0.10);
+      tiltBone(u.bones.LeftArm, -0.14, -0.08, 0.28);
+      tiltBone(u.bones.LeftForeArm, 0, 0.22, 0.10);
+      tiltBone(u.bones.LeftUpLeg, -0.20, 0.06, 0.10);
+      tiltBone(u.bones.LeftLeg, 0.26, 0, 0);
+      tiltBone(u.bones.RightUpLeg, -0.08, -0.05, -0.08);
     } else if (arch === 1) {
-      tiltBone(u.bones.RightArm, -0.45, 0.2, -0.82);
-      tiltBone(u.bones.RightForeArm, 0.35, -0.25, 0);
-      tiltBone(u.bones.LeftArm, 0.35, -0.2, 0.45);
-      tiltBone(u.bones.LeftForeArm, 0.25, 0.55, 0);
-      tiltBone(u.bones.LeftUpLeg, -0.08, 0.12, 0.1);
-      tiltBone(u.bones.RightUpLeg, -0.42, -0.14, -0.22);
-      tiltBone(u.bones.RightLeg, 0.52, 0, 0);
+      tiltBone(u.bones.RightArm, -0.24, 0.10, -0.36);
+      tiltBone(u.bones.RightForeArm, 0.20, -0.18, 0);
+      tiltBone(u.bones.LeftArm, 0.20, -0.10, 0.28);
+      tiltBone(u.bones.LeftForeArm, 0.16, 0.28, 0);
+      tiltBone(u.bones.LeftUpLeg, -0.06, 0.08, 0.08);
+      tiltBone(u.bones.RightUpLeg, -0.24, -0.08, -0.12);
+      tiltBone(u.bones.RightLeg, 0.30, 0, 0);
     } else if (arch === 2) {
-      tiltBone(u.bones.RightArm, 0.15, 0.1, -0.32);
-      tiltBone(u.bones.RightForeArm, -0.3, -0.5, 0);
-      tiltBone(u.bones.LeftArm, -0.38, -0.15, 0.78);
-      tiltBone(u.bones.LeftForeArm, 0.2, 0.25, 0.2);
-      tiltBone(u.bones.LeftUpLeg, -0.25, 0.08, 0.14);
-      tiltBone(u.bones.LeftLeg, 0.22, 0, 0);
-      tiltBone(u.bones.RightUpLeg, -0.24, -0.1, -0.18);
-      tiltBone(u.bones.RightLeg, 0.28, 0, 0);
+      tiltBone(u.bones.RightArm, 0.10, 0.06, -0.22);
+      tiltBone(u.bones.RightForeArm, -0.18, -0.28, 0);
+      tiltBone(u.bones.LeftArm, -0.22, -0.08, 0.36);
+      tiltBone(u.bones.LeftForeArm, 0.12, 0.18, 0.12);
+      tiltBone(u.bones.LeftUpLeg, -0.16, 0.05, 0.10);
+      tiltBone(u.bones.LeftLeg, 0.16, 0, 0);
+      tiltBone(u.bones.RightUpLeg, -0.15, -0.06, -0.10);
+      tiltBone(u.bones.RightLeg, 0.18, 0, 0);
     } else {
-      tiltBone(u.bones.RightArm, -0.65, 0.12, -0.42);
-      tiltBone(u.bones.RightForeArm, 0.18, -0.2, -0.22);
-      tiltBone(u.bones.LeftArm, -0.48, -0.18, 0.46);
-      tiltBone(u.bones.LeftForeArm, 0.15, 0.3, 0.22);
-      tiltBone(u.bones.LeftUpLeg, -0.14, 0.06, 0.22);
-      tiltBone(u.bones.RightUpLeg, -0.12, -0.06, -0.2);
+      tiltBone(u.bones.RightArm, -0.30, 0.08, -0.26);
+      tiltBone(u.bones.RightForeArm, 0.12, -0.14, -0.12);
+      tiltBone(u.bones.LeftArm, -0.26, -0.10, 0.28);
+      tiltBone(u.bones.LeftForeArm, 0.10, 0.20, 0.12);
+      tiltBone(u.bones.LeftUpLeg, -0.10, 0.04, 0.14);
+      tiltBone(u.bones.RightUpLeg, -0.10, -0.04, -0.14);
     }
-    tiltBone(u.bones.Spine1, dirSign * 0.16, 0, 0);
-    tiltBone(u.bones.Spine2, dirSign * 0.18, 0, 0);
-    tiltBone(u.bones.Neck, dirSign * 0.12, (Math.random() - 0.5) * 0.25, 0);
-    tiltBone(u.bones.Head, dirSign * 0.12, (Math.random() - 0.5) * 0.55, 0);
+    tiltBone(u.bones.Spine1, dirSign * 0.10, 0, 0);
+    tiltBone(u.bones.Spine2, dirSign * 0.12, 0, 0);
+    tiltBone(u.bones.Neck, dirSign * 0.08, (Math.random() - 0.5) * 0.16, 0);
+    tiltBone(u.bones.Head, dirSign * 0.08, (Math.random() - 0.5) * 0.30, 0);
 
     const tracks = [];
     for (const n of boneNames) {

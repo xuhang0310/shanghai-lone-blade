@@ -999,7 +999,7 @@ function findExecTarget() {
     const d = Math.hypot(dx, dz);
     if (d > 4.6) continue;
     const fwdDot = (dx * lookX + dz * lookZ) / (d || 1);
-    if (d > 2.2 && fwdDot < -0.15) continue;
+    if (fwdDot < -0.10) continue;
     if (!level.los(P.x, P.z, e.x, e.z)) continue;
 
     const foeDot = ((P.x - e.x) * Math.cos(e.ang) + (P.z - e.z) * Math.sin(e.ang)) / (d || 1);
@@ -1078,25 +1078,28 @@ function tryExecute() {
   const dur = stealth ? 0.70 : 0.78;
   const yaw = Math.atan2(ndz, ndx);
 
-  // Choose wall-free side (+1 or -1) for the Cylindrical Dolly Portrait Close-Up
-  const mx0 = (P.x + e.x) * 0.5;
-  const mz0 = (P.z + e.z) * 0.5;
-  const rPlus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI + 1.12), 0, Math.sin(yaw + Math.PI + 1.12), 2.2, GROUP_WORLD, physics.playerCollider);
-  const rMinus = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 1.12), 0, Math.sin(yaw + Math.PI - 1.12), 2.2, GROUP_WORLD, physics.playerCollider);
-  const side = !rPlus ? 1 : !rMinus ? -1 : rPlus.dist >= rMinus.dist ? 1 : -1;
+  // Default to -1 (same right-shoulder side as gameplay camera!) so camera pushes in smoothly without cross-back spin
+  const mx0 = P.x * 0.46 + e.x * 0.54;
+  const mz0 = P.z * 0.46 + e.z * 0.54;
+  const rRight = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI - 0.72), 0, Math.sin(yaw + Math.PI - 0.72), 2.1, GROUP_WORLD, physics.playerCollider);
+  const rLeft = physics.castRay(mx0, P.y + 1.38, mz0, Math.cos(yaw + Math.PI + 0.72), 0, Math.sin(yaw + Math.PI + 0.72), 2.1, GROUP_WORLD, physics.playerCollider);
+  const side = !rRight ? -1 : !rLeft ? 1 : rRight.dist >= rLeft.dist ? -1 : 1;
 
+  const startPlayerAng = P.ang;
+  const deltaPlayerAng = Math.atan2(Math.sin(yaw - startPlayerAng), Math.cos(yaw - startPlayerAng));
+
+  const foeDot = ((P.x - e.x) * Math.cos(e.ang) + (P.z - e.z) * Math.sin(e.ang)) / d;
+  const fromBehind = stealth || foeDot < -0.15;
   const startEnemyAng = e.ang;
-  const rawTargetAng = stealth ? yaw : Math.atan2(-ndz, -ndx);
-  let deltaEnemyAng = (rawTargetAng - startEnemyAng) % TAU;
-  if (deltaEnemyAng > Math.PI) deltaEnemyAng -= TAU;
-  if (deltaEnemyAng < -Math.PI) deltaEnemyAng += TAU;
+  const idealEnemyAng = fromBehind ? yaw : Math.atan2(-ndz, -ndx);
+  const rawEnemyDelta = Math.atan2(Math.sin(idealEnemyAng - startEnemyAng), Math.cos(idealEnemyAng - startEnemyAng));
+  const deltaEnemyAng = clamp(rawEnemyDelta, -0.65, 0.65);
   const startFlinch = Math.min(0.45, e.flinch || 0);
 
   e.executing = true;
   e.duck = false;
   e.flinch = 0;
   P.crouch = false;
-  P.ang = yaw;
   P.execT = dur;
   P.inv = dur + 0.85;
   execFX.dash = d > 1.8 ? 0.75 : 0.25;
@@ -1116,6 +1119,8 @@ function tryExecute() {
     ndz,
     yaw,
     side,
+    startPlayerAng,
+    deltaPlayerAng,
     startEnemyAng,
     deltaEnemyAng,
     startFlinch,
@@ -1148,7 +1153,13 @@ function updateExecution(dt) {
   const smashT = 0.22;
   const killT = s.stealth ? 0.38 : 0.42;
 
-  // Smooth C1 enemy turn & post-smash stumble slide (ZERO 1-frame yaw spin or teleport!)
+  // Lock player yaw smoothly along execution line for the entire session (zero mouse/edge spin!)
+  P.ang = Math.atan2(
+    Math.sin(s.startPlayerAng + s.deltaPlayerAng * smooth01(t / 0.16)),
+    Math.cos(s.startPlayerAng + s.deltaPlayerAng * smooth01(t / 0.16))
+  );
+
+  // Smooth C1 clamped enemy turn & post-smash stumble slide (ZERO 180° pirouette or teleport!)
   if (e && e.hp > 0) {
     e.ang = s.startEnemyAng + s.deltaEnemyAng * smooth01(t / smashT);
     if (!s.stealth && t >= smashT && t < smashT + 0.14) {
@@ -1174,7 +1185,6 @@ function updateExecution(dt) {
       P.z = mv.z;
       if (remD > 0.5 && Math.random() < 0.45) puff(P.x, 0.08, P.z, 2, '#9ec4eb', 2.8, 0.20);
     }
-    P.ang = s.yaw;
   } else {
     s.remDist = 0;
   }
@@ -1253,7 +1263,7 @@ function updateExecution(dt) {
         audio.sfx(wGun.snd);
         audio.sfx('execFreeze');
         muzzle = 1.3;
-        const camSideAng = s.yaw + Math.PI + s.side * 1.14;
+        const camSideAng = s.yaw + Math.PI + s.side * 0.72;
         gr.boomLight.position.set(
           execFX.impactPos.x + Math.cos(camSideAng) * 0.78,
           hitY + 0.34,
@@ -1327,8 +1337,8 @@ function updateExecution(dt) {
   execFX.k = camK;
 
   const cu = smooth01((t - 0.14) / 0.24);
-  const anchorX = P.x * 0.54 + s.lastEnemyX * 0.46;
-  const anchorZ = P.z * 0.54 + s.lastEnemyZ * 0.46;
+  const anchorX = P.x * 0.46 + s.lastEnemyX * 0.54;
+  const anchorZ = P.z * 0.46 + s.lastEnemyZ * 0.54;
 
   const baseDist = s.isLongGun ? 1.88 : 1.66;
   const fovKick = s.didKill ? Math.sin(clamp((t - killT) / 0.24, 0, 1) * Math.PI) * 3.2 : 0;
@@ -1339,13 +1349,13 @@ function updateExecution(dt) {
     mz: anchorZ,
     yaw: s.yaw,
     side: s.side,
-    orbOff: 0.76 + 0.38 * cu,
+    orbOff: 0.48 + 0.24 * cu,
     dist: baseDist + 0.12 * (1 - cu) + (s.freezeDrift || 0),
-    camYOff: 1.28 + 0.14 * cu,
+    camYOff: 1.30 + 0.12 * cu,
     lookY: 1.32 + 0.10 * cu,
     fov: 43 - 6.5 * cu,
     fovKick,
-    roll: -0.036 * s.side * cu
+    roll: -0.026 * s.side * cu
   };
 
   if (t >= s.dur && freezeFrameT <= 0) {
@@ -2670,8 +2680,8 @@ async function boot() {
     onBlur: () => { if (state === 'play') togglePause(); },
     onPointerUnlock: () => { if (state === 'play') togglePause(); },
     onLookDelta: (dx, dy) => {
-      if (state === 'play') {
-        P.ang += dx;
+      if (state === 'play' && !execSession && freezeFrameT <= 0 && P.execT <= 0) {
+        P.ang = Math.atan2(Math.sin(P.ang + dx), Math.cos(P.ang + dx));
         P.pitch = clamp(P.pitch + dy, -0.5, 0.75);
       }
     },
