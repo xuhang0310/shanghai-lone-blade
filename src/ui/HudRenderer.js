@@ -139,7 +139,7 @@ export class HudRenderer {
     const R = it ? 46 : 58;
     const rcx = rx - R;
     const rcy = 48 + R;
-    const rangeM = 35;
+    const rangeM = 48;
     const cs = Math.cos(P.ang);
     const sn = Math.sin(P.ang);
 
@@ -238,7 +238,7 @@ export class HudRenderer {
 
     ctx.font = '13px ' + FONT;
     ctx.fillStyle = '#ece3cf';
-    ctx.fillText(`手雷 × ${P.nades}　燃烧瓶 × ${P.molo}${P.crouch ? '　蹲伏' : ''}`, wx, by - 52);
+    ctx.fillText(`手雷 × ${P.nades}　燃烧瓶 × ${P.molo}${P.diveT > 0 ? '　飞扑慢镜' : P.crouch ? '　蹲伏' : ''}`, wx, by - 52);
 
     if (!it) {
       ctx.fillStyle = '#b9b2a2';
@@ -303,7 +303,7 @@ export class HudRenderer {
           ? '击毙帮主黑龙'
           : cfg.mission === 'rescue'
             ? '解救联络人，护送他到北面出口'
-            : '五分钟内在三处军火箱安放炸药',
+            : '六分钟内在三处军火箱安放炸药',
         w / 2,
         h * 0.26 + 74
       );

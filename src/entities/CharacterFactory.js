@@ -980,6 +980,34 @@ export class CharacterFactory {
           side: THREE.DoubleSide
         });
         coatMat.userData.own = true;
+        const swayUniform = { value: new THREE.Vector3() };
+        coatMat.userData.sway = swayUniform;
+        coatMat.onBeforeCompile = shader => {
+          shader.uniforms.uTime = this.gr.timeUniform;
+          shader.uniforms.uCoatSway = swayUniform;
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              '#include <common>',
+              `#include <common>
+              uniform float uTime;
+              uniform vec3 uCoatSway;`
+            )
+            .replace(
+              '#include <begin_vertex>',
+              `#include <begin_vertex>
+              if (transformed.y < 0.24) {
+                float skirtK = clamp((0.24 - transformed.y) / 0.58, 0.0, 1.0);
+                skirtK = skirtK * skirtK;
+                float windW = sin(uTime * 5.2 + transformed.x * 11.0 + transformed.z * 7.0) * 0.02 * skirtK;
+                transformed.x += uCoatSway.x * skirtK + windW;
+                transformed.z += uCoatSway.z * skirtK - abs(uCoatSway.z) * 0.14 * skirtK;
+                transformed.y += uCoatSway.y * skirtK;
+                vec2 radD = length(transformed.xz) > 0.001 ? normalize(transformed.xz) : vec2(0.0, -1.0);
+                transformed.xz += radD * (length(uCoatSway.xz) * 0.32 + 0.014) * skirtK;
+              }`
+            );
+        };
+        coatMat.customProgramCacheKey = () => 'noir-coat-cloth-v1';
         const outfitMesh = new THREE.SkinnedMesh(outfitGeo, coatMat);
         outfitMesh.castShadow = true;
         outfitMesh.frustumCulled = false;
@@ -1109,8 +1137,31 @@ export class CharacterFactory {
 
   poseMesh(m, x, z, ang, mode, dt, aimPitch = 0, flinch = 0) {
     const u = m.userData;
-    m.position.set(x, 0, z);
+    m.position.x = x;
+    m.position.z = z;
     m.rotation.y = -ang;
+
+    if (u.coatMat?.userData?.sway) {
+      if (u.prevX === undefined) {
+        u.prevX = x;
+        u.prevZ = z;
+      }
+      const idt = Math.max(dt, 0.004);
+      const vx = (x - u.prevX) / idt;
+      const vz = (z - u.prevZ) / idt;
+      u.prevX = x;
+      u.prevZ = z;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      const fwdVel = vx * ca + vz * sa;
+      const sideVel = -vx * sa + vz * ca;
+      const spd = Math.hypot(fwdVel, sideVel);
+      const sway = u.coatMat.userData.sway.value;
+      const k = Math.min(1, dt * 10);
+      sway.x += (clamp(sideVel * 0.024, -0.14, 0.14) - sway.x) * k;
+      sway.y += (Math.min(0.14, spd * 0.015) - sway.y) * k;
+      sway.z += (-clamp(fwdVel * 0.026, -0.12, 0.22) - sway.z) * k;
+    }
 
     for (const n in u.acts) {
       u.w[n] += ((n === mode ? 1 : 0) - u.w[n]) * Math.min(1, dt * 9);
@@ -1150,6 +1201,26 @@ export class CharacterFactory {
     if (u.coatMat) u.coatMat.emissive.setHex(0);
     m.scale.y = m.scale.x;
 
+    // Snapshot current live skeletal pose before computing relaxed Noir death target
+    const boneNames = [
+      'RightArm',
+      'RightForeArm',
+      'LeftArm',
+      'LeftForeArm',
+      'Spine1',
+      'Spine2',
+      'Neck',
+      'Head',
+      'LeftUpLeg',
+      'LeftLeg',
+      'RightUpLeg',
+      'RightLeg'
+    ];
+    const fromQ = {};
+    for (const n of boneNames) {
+      if (u.bones[n]) fromQ[n] = u.bones[n].quaternion.clone();
+    }
+
     for (const n in u.acts) {
       const w = n === 'Idle' ? 1 : 0;
       u.w[n] = w;
@@ -1169,18 +1240,53 @@ export class CharacterFactory {
       bone.quaternion.multiply(_q);
     };
 
-    // Relax arms splayed outward & relax spine/head/legs so corpse sprawls naturally
-    tiltBone(u.bones.RightArm, 0.25, 0.15, -0.55);
-    tiltBone(u.bones.RightForeArm, 0, -0.35, -0.15);
-    tiltBone(u.bones.LeftArm, -0.2, -0.15, 0.55);
-    tiltBone(u.bones.LeftForeArm, 0, 0.35, 0.15);
+    const arch = (Math.random() * 4) | 0;
+    if (arch === 0) {
+      tiltBone(u.bones.RightArm, 0.25, 0.15, -0.55);
+      tiltBone(u.bones.RightForeArm, 0, -0.35, -0.15);
+      tiltBone(u.bones.LeftArm, -0.2, -0.15, 0.55);
+      tiltBone(u.bones.LeftForeArm, 0, 0.35, 0.15);
+      tiltBone(u.bones.LeftUpLeg, -0.32, 0.1, 0.16);
+      tiltBone(u.bones.LeftLeg, 0.42, 0, 0);
+      tiltBone(u.bones.RightUpLeg, -0.1, -0.08, -0.1);
+    } else if (arch === 1) {
+      tiltBone(u.bones.RightArm, -0.45, 0.2, -0.82);
+      tiltBone(u.bones.RightForeArm, 0.35, -0.25, 0);
+      tiltBone(u.bones.LeftArm, 0.35, -0.2, 0.45);
+      tiltBone(u.bones.LeftForeArm, 0.25, 0.55, 0);
+      tiltBone(u.bones.LeftUpLeg, -0.08, 0.12, 0.1);
+      tiltBone(u.bones.RightUpLeg, -0.42, -0.14, -0.22);
+      tiltBone(u.bones.RightLeg, 0.52, 0, 0);
+    } else if (arch === 2) {
+      tiltBone(u.bones.RightArm, 0.15, 0.1, -0.32);
+      tiltBone(u.bones.RightForeArm, -0.3, -0.5, 0);
+      tiltBone(u.bones.LeftArm, -0.38, -0.15, 0.78);
+      tiltBone(u.bones.LeftForeArm, 0.2, 0.25, 0.2);
+      tiltBone(u.bones.LeftUpLeg, -0.25, 0.08, 0.14);
+      tiltBone(u.bones.LeftLeg, 0.22, 0, 0);
+      tiltBone(u.bones.RightUpLeg, -0.24, -0.1, -0.18);
+      tiltBone(u.bones.RightLeg, 0.28, 0, 0);
+    } else {
+      tiltBone(u.bones.RightArm, -0.65, 0.12, -0.42);
+      tiltBone(u.bones.RightForeArm, 0.18, -0.2, -0.22);
+      tiltBone(u.bones.LeftArm, -0.48, -0.18, 0.46);
+      tiltBone(u.bones.LeftForeArm, 0.15, 0.3, 0.22);
+      tiltBone(u.bones.LeftUpLeg, -0.14, 0.06, 0.22);
+      tiltBone(u.bones.RightUpLeg, -0.12, -0.06, -0.2);
+    }
     tiltBone(u.bones.Spine1, dirSign * 0.16, 0, 0);
     tiltBone(u.bones.Spine2, dirSign * 0.18, 0, 0);
-    tiltBone(u.bones.Neck, dirSign * 0.12, (Math.random() - 0.5) * 0.2, 0);
-    tiltBone(u.bones.Head, dirSign * 0.12, (Math.random() - 0.5) * 0.5, 0);
-    tiltBone(u.bones.LeftUpLeg, -0.32, 0.1, 0.16);
-    tiltBone(u.bones.LeftLeg, 0.42, 0, 0);
-    tiltBone(u.bones.RightUpLeg, -0.1, -0.08, -0.1);
+    tiltBone(u.bones.Neck, dirSign * 0.12, (Math.random() - 0.5) * 0.25, 0);
+    tiltBone(u.bones.Head, dirSign * 0.12, (Math.random() - 0.5) * 0.55, 0);
+
+    const tracks = [];
+    for (const n of boneNames) {
+      if (u.bones[n] && fromQ[n]) {
+        tracks.push({ bone: u.bones[n], fromQ: fromQ[n], toQ: u.bones[n].quaternion.clone() });
+        u.bones[n].quaternion.copy(fromQ[n]);
+      }
+    }
+    u.corpseRelax = { t: 0, dur: 0.38, tracks };
     m.updateMatrixWorld(true);
   }
 

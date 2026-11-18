@@ -15,6 +15,9 @@ export class LevelState {
     this.rects = [];
     this.lamps = [];
     this.street = [];
+    this.crossZs = [];
+    this.gateways = [];
+    this.poles = [];
     this.lowTiles = new Set();
     this.startPos = { x: 0, z: 0 };
     this.exitPos = { x: 0, z: 0 };
@@ -157,28 +160,75 @@ export class LevelState {
       { x: MW - 1, y: 1, w: 1, h: MH - 2, border: 1, seawall: this.cfg.style === 'plank' }
     ];
 
-    // Winding main street
+    // Winding main avenue with 1930s variable width (boulevard plazas & narrow Shikumen throats)
     const cxs = [];
-    let cx = 13;
+    let cx = Math.floor(MW / 2);
     for (let z = MH - 1; z >= 0; z--) {
-      if (z % 3 === 0) cx = clamp(cx + R(-2, 2), 4, MW - 5);
+      if (z % 4 === 0) cx = clamp(cx + R(-2, 2), 7, MW - 8);
       cxs[z] = cx;
-      for (let x = cx - 2; x <= cx + 2; x++) prot[z * MW + x] = 1;
+      const halfW = z % 18 < 11 ? 3 : 2;
+      for (let x = cx - halfW; x <= cx + halfW; x++) prot[z * MW + x] = 1;
     }
-    for (let z = MH - 7; z < MH - 1; z++) {
-      for (let x = cxs[MH - 3] - 3; x <= cxs[MH - 3] + 3; x++) {
+    for (let z = MH - 8; z < MH - 1; z++) {
+      for (let x = cxs[MH - 3] - 4; x <= cxs[MH - 3] + 4; x++) {
         if (x > 0 && x < MW - 1) prot[z * MW + x] = 1;
       }
     }
-    const top = this.cfg.boss ? 16 : 5;
+    const top = this.cfg.boss ? 20 : 6;
     for (let z = 1; z < top; z++) {
       for (let x = 1; x < MW - 1; x++) prot[z * MW + x] = 1;
     }
 
-    // Place buildings
-    for (let n = 0; n < 140; n++) {
-      const w = R(2, 6);
-      const h = R(2, 5);
+    // East-West cross-streets & open crossroads plazas
+    this.crossZs = [Math.round(MH * 0.28), Math.round(MH * 0.54), Math.round(MH * 0.76)].filter(
+      z => z > top + 5 && z < MH - 11
+    );
+    for (const cz of this.crossZs) {
+      for (let zz = cz - 1; zz <= cz + 1; zz++) {
+        for (let xx = 2; xx < MW - 2; xx++) prot[zz * MW + xx] = 1;
+      }
+      const px0 = cxs[cz];
+      for (let dz = -4; dz <= 4; dz++) {
+        for (let dx = -5; dx <= 5; dx++) {
+          const xx = clamp(px0 + dx, 1, MW - 2);
+          const zz = clamp(cz + dz, 2, MH - 3);
+          prot[zz * MW + xx] = 1;
+        }
+      }
+    }
+
+    // Waterfront cargo quay for Shiliupu docks, or side Shikumen courtyards (天井院落)
+    if (this.cfg.style === 'plank') {
+      for (let zz = 7; zz <= MH - 9; zz++) {
+        for (let xx = MW - 6; xx <= MW - 2; xx++) prot[zz * MW + xx] = 1;
+      }
+    } else if (this.cfg.style === 'cobble') {
+      const courtyards = [
+        [7, Math.round(MH * 0.4)],
+        [MW - 8, Math.round(MH * 0.66)]
+      ];
+      for (const [qx, qz] of courtyards) {
+        for (let dz = -2; dz <= 2; dz++) {
+          for (let dx = -2; dx <= 3; dx++) {
+            const xx = clamp(qx + dx, 2, MW - 3);
+            const zz = clamp(qz + dz, top + 2, MH - 10);
+            prot[zz * MW + xx] = 1;
+          }
+        }
+        const xA = Math.min(qx, cxs[qz]);
+        const xB = Math.max(qx, cxs[qz]);
+        for (let xx = xA; xx <= xB; xx++) {
+          prot[qz * MW + xx] = 1;
+          prot[(qz + 1) * MW + xx] = 1;
+        }
+      }
+    }
+
+    // Place grand 1930s commercial blocks + Shikumen rowhouses
+    for (let n = 0; n < 280; n++) {
+      const isGrand = n < 75;
+      const w = isGrand ? R(4, 8) : R(2, 6);
+      const h = isGrand ? R(4, 6) : R(2, 5);
       const x = R(1, MW - 1 - w);
       const z = R(top, MH - 8 - h);
       let ok = true;
@@ -192,15 +242,30 @@ export class LevelState {
         }
       }
       if (ok) {
-        this.rects.push({ x, y: z, w, h });
+        this.rects.push({ x, y: z, w, h, artDeco: w >= 5 && h >= 4 });
         for (let zz = z; zz < z + h; zz++) {
           for (let xx = x; xx < x + w; xx++) this.grid[zz * MW + xx] = 1;
         }
       }
     }
 
+    // Shikumen Overstreet Gatehouses (过街楼) spanning narrower alley necks
+    this.gateways = [];
+    if (this.cfg.style === 'cobble') {
+      for (let z = 12; z < MH - 12 && this.gateways.length < 4; z += 13) {
+        let xl = cxs[z];
+        let xr = cxs[z];
+        while (xl > 0 && this.T(xl, z) !== 1) xl--;
+        while (xr < MW - 1 && this.T(xr, z) !== 1) xr++;
+        const spanTiles = xr - xl - 1;
+        if (spanTiles >= 3 && spanTiles <= 7 && xl > 0 && xr < MW - 1 && this.T(xl, z - 1) === 1 && this.T(xr, z - 1) === 1) {
+          this.gateways.push({ x0: (xl + 1) * TILE, x1: xr * TILE, z: (z + 0.5) * TILE });
+        }
+      }
+    }
+
     // Crates (2) and explosive barrels (3)
-    for (let n = 0; n < 68; n++) {
+    for (let n = 0; n < 115; n++) {
       const x = R(1, MW - 2);
       const z = R(3, MH - 9);
       const k = Math.random() < 0.24 ? 3 : 2;
@@ -209,7 +274,7 @@ export class LevelState {
       for (let j = 0; j < len; j++) {
         const xx = x + (hz ? j : 0);
         const zz = z + (hz ? 0 : j);
-        if (this.T(xx, zz) === 0 && xx !== cxs[zz] && Math.abs(xx - cxs[zz]) !== 1) {
+        if (this.T(xx, zz) === 0 && Math.abs(xx - cxs[zz]) > 1) {
           this.grid[zz * MW + xx] = k;
           this.tileHp[zz * MW + xx] = k === 2 ? 40 : 15;
         }
@@ -232,18 +297,34 @@ export class LevelState {
     this.startPos = { x: (cxs[MH - 3] + 0.5) * TILE, z: (MH - 3.5) * TILE };
     this.exitPos = { x: (cxs[2] + 0.5) * TILE, z: 2.5 * TILE };
 
-    // Street lamps along the main lane
+    // Street lamps along main boulevard & cross-streets
     this.lamps = [];
-    for (let z = 4; z < MH - 2; z += 6) {
-      const lx = cxs[z] + (z % 4 ? 2 : -2);
+    for (let z = 5; z < MH - 3; z += 6) {
+      const side = z % 4 ? 1 : -1;
+      let lx = cxs[z] + side * 3;
+      if (this.T(lx, z) !== 0) lx = cxs[z] + side * 2;
       if (this.T(lx, z) === 0) {
         this.lamps.push({
-          x: (lx + 0.5) * TILE + (z % 4 ? 0.85 : -0.85),
+          x: (lx + 0.5) * TILE + side * 0.85,
           z: (z + 0.5) * TILE,
           lx: 0,
           ly: 3.6,
           lz: 0
         });
+      }
+    }
+    for (const cz of this.crossZs) {
+      for (const sx of [-6, 6]) {
+        const tx = clamp(cxs[cz] + sx, 3, MW - 4);
+        if (this.T(tx, cz - 2) === 0) {
+          this.lamps.push({
+            x: (tx + 0.5) * TILE,
+            z: (cz - 2 + 0.5) * TILE - 0.65,
+            lx: 0,
+            ly: 3.6,
+            lz: 0
+          });
+        }
       }
     }
 
@@ -264,7 +345,7 @@ export class LevelState {
       }
     }
 
-    // Street thematic props (rickshaws, sandbags, 1930s trucks) placed carefully in wide spots
+    // Street thematic props: 1930s trams, kiosks, sedans, trucks, sandbags, rickshaws, telegraph poles
     this.props = [];
     const occupiedProp = new Set();
     const markPropTile = (tx, tz) => occupiedProp.add(`${tx},${tz}`);
@@ -282,9 +363,56 @@ export class LevelState {
       return true;
     };
 
-    // Place 2-3 vintage flatbed trucks & 1930s noir sedans in spacious street squares / docks / warehouse
+    // 1930s Shanghai Tramcars (老上海有轨电车) in spacious crossroad plazas / avenue stretches
+    let tramsPlaced = 0;
+    if (!this.cfg.boss) {
+      for (const cz of this.crossZs) {
+        if (tramsPlaced >= 2) break;
+        const tx = clamp(cxs[cz] + (tramsPlaced % 2 === 0 ? -3 : 3), 4, MW - 5);
+        const tz = cz;
+        if (canPlaceProp(tx, tz, 2) && reach[tz * MW + tx]) {
+          this.props.push({ kind: 'tram', x: (tx + 0.5) * TILE, z: (tz + 0.5) * TILE, rotY: rnd(-0.05, 0.05), tx, tz });
+          for (let dz = -2; dz <= 2; dz++) {
+            for (let dx = -1; dx <= 1; dx++) markPropTile(tx + dx, tz + dz);
+          }
+          tramsPlaced++;
+        }
+      }
+    }
+
+    // Street-corner 1930s Newspaper / Tobacco Kiosks (申报烟纸亭)
+    let kiosksPlaced = 0;
+    if (!this.cfg.boss) {
+      for (let i = 0; i < this.crossZs.length && kiosksPlaced < 3; i++) {
+        const cz = this.crossZs[i];
+        const tx = clamp(cxs[cz] + (i % 2 ? 4 : -4), 3, MW - 4);
+        const tz = cz + (i % 2 ? -3 : 3);
+        if (canPlaceProp(tx, tz, 1) && reach[tz * MW + tx]) {
+          const rotY = i % 2 ? -Math.PI / 4 : Math.PI / 4;
+          this.props.push({ kind: 'kiosk', x: (tx + 0.5) * TILE, z: (tz + 0.5) * TILE, rotY, tx, tz });
+          for (let dz = -1; dz <= 1; dz++) {
+            for (let dx = -1; dx <= 1; dx++) markPropTile(tx + dx, tz + dz);
+          }
+          kiosksPlaced++;
+        }
+      }
+    }
+
+    // Place up to 6 vintage flatbed trucks & 1930s noir sedans across avenues & Shiliupu quay
     let trucksPlaced = 0;
-    for (let z = 10; z < MH - 10 && trucksPlaced < 3; z += 14) {
+    if (this.cfg.style === 'plank') {
+      for (const z of [Math.round(MH * 0.36), Math.round(MH * 0.68)]) {
+        const tx = MW - 4;
+        if (canPlaceProp(tx, z, 1) && reach[z * MW + tx]) {
+          this.props.push({ kind: 'truck', x: (tx + 0.5) * TILE, z: (z + 0.5) * TILE, rotY: rnd(-0.12, 0.12), tx, tz: z });
+          for (let dz = -1; dz <= 1; dz++) {
+            for (let dx = -1; dx <= 1; dx++) markPropTile(tx + dx, z + dz);
+          }
+          trucksPlaced++;
+        }
+      }
+    }
+    for (let z = 12; z < MH - 10 && trucksPlaced < 6; z += 13) {
       const side = trucksPlaced % 2 === 0 ? -3 : 3;
       const tx = clamp(cxs[z] + side, 3, MW - 4);
       if (canPlaceProp(tx, z, 1) && reach[z * MW + tx]) {
@@ -298,16 +426,28 @@ export class LevelState {
       }
     }
 
-    // Place sandbag barricades and rickshaws
-    for (let n = 0; n < 36; n++) {
+    // Place sandbag barricades and rickshaws across wide street district
+    for (let n = 0; n < 58; n++) {
       const z = R(top + 2, MH - 10);
-      const tx = clamp(cxs[z] + R(-5, 5), 2, MW - 3);
+      const tx = R(2, MW - 3);
       if (!canPlaceProp(tx, z, 0) || !reach[z * MW + tx]) continue;
       if (Math.abs(tx - cxs[z]) === 0) continue;
       const kind = n % 2 === 0 ? 'sandbag' : 'rickshaw';
       const rotY = kind === 'sandbag' ? (Math.random() < 0.5 ? 0 : Math.PI * 0.12) : rnd(0, Math.PI * 2);
       this.props.push({ kind, x: (tx + 0.5) * TILE, z: (z + 0.5) * TILE, rotY, tx, tz: z });
       markPropTile(tx, z);
+    }
+
+    // Wooden telegraph poles with overhead sagging wires (1930s Shanghai streets)
+    this.poles = [];
+    if (!this.cfg.boss) {
+      for (let z = 8; z < MH - 8; z += 9) {
+        const tx = clamp(cxs[z] + 3, 2, MW - 3);
+        if (this.T(tx, z) === 0 && !occupiedProp.has(`${tx},${z}`) && reach[z * MW + tx]) {
+          this.poles.push({ x: (tx + 0.5) * TILE + 0.7, z: (z + 0.5) * TILE });
+          markPropTile(tx, z);
+        }
+      }
     }
 
     // Spawn enemies
@@ -319,13 +459,13 @@ export class LevelState {
     }
     let placed = 0;
     let guard = 0;
-    const z0 = this.cfg.boss ? 17 : 4;
-    while (placed < this.cfg.groups && guard++ < 800) {
+    const z0 = this.cfg.boss ? 21 : 5;
+    while (placed < this.cfg.groups && guard++ < 1400) {
       const x = R(2, MW - 3);
       const z = R(z0, MH - 13);
       if (this.T(x, z) !== 0 || !reach[z * MW + x]) continue;
       const band = Math.floor((placed / this.cfg.groups) * (MH - 17 - z0)) + z0;
-      if (Math.abs(z - band) > 7) continue;
+      if (Math.abs(z - band) > 8) continue;
       const n = R(2, 4);
       for (let j = 0; j < n; j++) {
         const ex = x + R(-1, 1);
@@ -351,10 +491,10 @@ export class LevelState {
 
     const pick = fr => {
       const zz = Math.round(MH - 9 - fr * (MH - 15));
-      for (let n = 0; n < 400; n++) {
+      for (let n = 0; n < 500; n++) {
         const x = R(2, MW - 3);
         const z = clamp(zz + R(-2, 2), 4, MH - 9);
-        if (this.T(x, z) === 0 && reach[z * MW + x] && Math.abs(x - cxs[z]) <= 6) {
+        if (this.T(x, z) === 0 && reach[z * MW + x] && Math.abs(x - cxs[z]) <= 13) {
           return { x: (x + 0.5) * TILE, z: (z + 0.5) * TILE };
         }
       }

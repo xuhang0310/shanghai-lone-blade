@@ -517,9 +517,33 @@ export class ArchitectureBuilder {
           worldGroup.add(belt);
         }
 
-        // Pitched dark-tile roof for Level 0 (弄堂) & Level 1 (码头货栈)
-        if (!cfg.boss) {
+        // Pitched dark-tile roof for Shikumen alleys & dock warehouses; Art-Deco blocks get corner pilasters + stepped crown tower
+        if (!cfg.boss && !r.artDeco) {
           this._buildPitchedRoof(worldGroup, cx, H, cz, bw, bd, cfg.style === 'cobble');
+        }
+        if (!cfg.boss && r.artDeco) {
+          for (const sx of [-1, 1]) {
+            for (const sz of [-1, 1]) {
+              const pil = new THREE.Mesh(G.box, this.mats.trim);
+              pil.scale.set(0.36, H + 0.14, 0.36);
+              pil.position.set(cx + sx * (bw * 0.5 + 0.04), H * 0.5, cz + sz * (bd * 0.5 + 0.04));
+              worldGroup.add(pil);
+            }
+          }
+          const t1 = new THREE.Mesh(G.box, fm);
+          t1.scale.set(3.4, 2.6, 3.4);
+          t1.position.set(cx, H + 1.3, cz);
+          t1.castShadow = true;
+          worldGroup.add(t1);
+          const t2 = new THREE.Mesh(G.box, this.mats.trim);
+          t2.scale.set(2.1, 1.8, 2.1);
+          t2.position.set(cx, H + 3.5, cz);
+          t2.castShadow = true;
+          worldGroup.add(t2);
+          const pole = new THREE.Mesh(G.cylLo, this.mats.steelBeam);
+          pole.scale.set(0.05, 3.2, 0.05);
+          pole.position.set(cx, H + 6.0, cz);
+          worldGroup.add(pole);
         }
       }
 
@@ -606,6 +630,9 @@ export class ArchitectureBuilder {
     );
 
     // Level-specific monumental 3D structures
+    if (level.gateways?.length) {
+      this._buildOverstreetGatehouses(worldGroup, physics, level.gateways, cfg.mats.walls[0]);
+    }
     if (cfg.style === 'plank') {
       const rivers = this._buildDockyardStructures(worldGroup, physics, totalW, totalD);
       reflectHide.push(...rivers);
@@ -617,17 +644,17 @@ export class ArchitectureBuilder {
   }
 
   _buildSkyAndSkyline(worldGroup, totalW, totalD) {
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(340, 24, 14), this.mats.skyDome);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(480, 24, 14), this.mats.skyDome);
     sky.position.set(totalW * 0.5, 0, totalD * 0.5);
     worldGroup.add(sky);
 
     const G = this.gr.G;
     const cx = totalW * 0.5;
     const cz = totalD * 0.5;
-    const baseR = Math.max(totalW, totalD) * 0.62 + 92;
+    const baseR = Math.max(totalW, totalD) * 0.58 + 105;
 
-    for (let i = 0; i < 24; i++) {
-      const ang = (i / 24) * Math.PI * 2;
+    for (let i = 0; i < 32; i++) {
+      const ang = (i / 32) * Math.PI * 2;
       const dist = baseR + (i % 3) * 18;
       const bx = cx + Math.cos(ang) * dist;
       const bz = cz + Math.sin(ang) * dist;
@@ -797,26 +824,211 @@ export class ArchitectureBuilder {
     }
   }
 
+  _buildOverstreetGatehouses(worldGroup, physics, gateways, wallMat) {
+    const G = this.gr.G;
+    for (const gw of gateways) {
+      const span = gw.x1 - gw.x0;
+      const cx = (gw.x0 + gw.x1) * 0.5;
+      const z = gw.z;
+      const clearY = 4.25;
+      const bridgeH = 3.1;
+      const depth = 4.6;
+
+      // Stone soffit arch beam & carved side corbels
+      const soffit = new THREE.Mesh(G.box, this.mats.trim);
+      soffit.scale.set(span + 0.3, 0.36, depth + 0.24);
+      soffit.position.set(cx, clearY + 0.18, z);
+      soffit.castShadow = true;
+      soffit.receiveShadow = true;
+      worldGroup.add(soffit);
+
+      for (const sx of [-1, 1]) {
+        const corbel = new THREE.Mesh(G.box, this.mats.trim);
+        corbel.scale.set(0.65, 1.05, depth * 0.86);
+        corbel.position.set(sx < 0 ? gw.x0 + 0.32 : gw.x1 - 0.32, clearY - 0.45, z);
+        corbel.castShadow = true;
+        worldGroup.add(corbel);
+      }
+
+      // Upper brick bridge room (leaves y < 4.25m clear for combat & vehicles)
+      const room = new THREE.Mesh(G.box, wallMat);
+      room.scale.set(span + 0.4, bridgeH, depth);
+      room.position.set(cx, clearY + 0.36 + bridgeH * 0.5, z);
+      room.castShadow = true;
+      room.receiveShadow = true;
+      worldGroup.add(room);
+      physics.addStaticBox(
+        cx,
+        clearY + 0.36 + bridgeH * 0.5,
+        z,
+        span * 0.5,
+        bridgeH * 0.5,
+        depth * 0.5,
+        0,
+        { kind: 'wall' },
+        GROUP_WORLD
+      );
+
+      this._buildPitchedRoof(worldGroup, cx, clearY + 0.36 + bridgeH, z, span + 0.3, depth + 0.25, true);
+
+      // Lit Shikumen windows on both North & South facades of the overstreet room
+      for (const side of [-1, 1]) {
+        const ry = side > 0 ? 0 : Math.PI;
+        const wz = z + side * (depth * 0.5 + 0.04);
+        const wy = clearY + 0.36 + bridgeH * 0.5;
+        const frame = new THREE.Mesh(this.kit.winFrame, this.mats.stoneVertex);
+        frame.position.set(cx, wy, wz);
+        frame.rotation.y = ry;
+        worldGroup.add(frame);
+
+        const glass = new THREE.Mesh(G.plane, this.mats.winLit);
+        glass.scale.set(0.98, 1.48, 1);
+        glass.position.set(cx, wy, wz + side * 0.04);
+        glass.rotation.y = ry;
+        worldGroup.add(glass);
+      }
+
+      // Warm passage lantern hung under arch center
+      const lan = new THREE.Mesh(G.sphLo, this.gr.M.lanternBody);
+      lan.scale.set(0.18, 0.24, 0.18);
+      lan.position.set(cx, clearY - 0.22, z);
+      worldGroup.add(lan);
+      const gl = new THREE.Sprite(this.gr.M.glowSprite);
+      gl.scale.set(2.4, 2.4, 1);
+      gl.position.set(cx, clearY - 0.22, z);
+      worldGroup.add(gl);
+    }
+  }
+
   _buildDockyardStructures(worldGroup, physics, totalW, totalD) {
     // Huangpu River lapping beyond the eastern pier border & north end
-    const river = new THREE.Mesh(new THREE.PlaneGeometry(140, totalD + 80), this.mats.river);
+    const river = new THREE.Mesh(new THREE.PlaneGeometry(200, totalD + 140), this.mats.river);
     river.rotation.x = -Math.PI / 2;
-    river.position.set(totalW + 66, -1.15, totalD * 0.5);
+    river.position.set(totalW + 96, -1.15, totalD * 0.5);
     river.receiveShadow = true;
     worldGroup.add(river);
 
-    const northRiver = new THREE.Mesh(new THREE.PlaneGeometry(totalW + 140, 90), this.mats.river);
+    const northRiver = new THREE.Mesh(new THREE.PlaneGeometry(totalW + 220, 130), this.mats.river);
     northRiver.rotation.x = -Math.PI / 2;
-    northRiver.position.set(totalW * 0.5 + 30, -1.15, -45);
+    northRiver.position.set(totalW * 0.5 + 30, -1.15, -65);
     worldGroup.add(northRiver);
 
-    // Steel gantry cranes straddling the outer pier walls with east overhang over the river
-    for (const zPos of [38, 96]) {
-      if (zPos < totalD - 16) {
-        this._buildGantryCrane(worldGroup, 1.25, zPos, totalW - 2.5);
+    // Steel gantry cranes spanning the eastern waterfront quay with river overhang
+    for (const zPos of [44, 115, 184]) {
+      if (zPos < totalD - 20) {
+        this._buildGantryCrane(worldGroup, totalW - 15.0, zPos, 13.75);
       }
     }
+    this._buildMooredFreighter(worldGroup, totalW, totalD);
     return [river, northRiver];
+  }
+
+  _buildMooredFreighter(worldGroup, totalW, totalD) {
+    const G = this.gr.G;
+    const ship = new THREE.Group();
+    ship.position.set(totalW + 14.5, -1.05, totalD * 0.48);
+
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0x171c24, roughness: 0.68, metalness: 0.35 });
+    const redMat = new THREE.MeshStandardMaterial({ color: 0x5c1f1a, roughness: 0.72, metalness: 0.2 });
+    const bridgeMat = new THREE.MeshStandardMaterial({ color: 0xc8c0ae, roughness: 0.6 });
+    const hatchMat = new THREE.MeshStandardMaterial({ color: 0x4b3522, roughness: 0.85 });
+    hullMat.userData.own = redMat.userData.own = bridgeMat.userData.own = hatchMat.userData.own = true;
+
+    const hull = new THREE.Mesh(G.box, hullMat);
+    hull.scale.set(9.6, 4.4, 46);
+    hull.position.y = 2.0;
+    hull.castShadow = true;
+    ship.add(hull);
+
+    const waterline = new THREE.Mesh(G.box, redMat);
+    waterline.scale.set(9.8, 1.3, 46.2);
+    waterline.position.y = 0.5;
+    ship.add(waterline);
+
+    const forecastle = new THREE.Mesh(G.box, hullMat);
+    forecastle.scale.set(9.2, 2.2, 10.5);
+    forecastle.position.set(0, 5.2, -17.5);
+    ship.add(forecastle);
+
+    const poopDeck = new THREE.Mesh(G.box, hullMat);
+    poopDeck.scale.set(9.2, 2.0, 9.5);
+    poopDeck.position.set(0, 5.1, 18.0);
+    ship.add(poopDeck);
+
+    // Timber cargo hatches & midship superstructure bridge
+    for (const hz of [-8.8, 8.5]) {
+      const hatch = new THREE.Mesh(G.box, hatchMat);
+      hatch.scale.set(5.6, 0.9, 6.4);
+      hatch.position.set(0, 4.6, hz);
+      ship.add(hatch);
+    }
+
+    const bridge1 = new THREE.Mesh(G.box, bridgeMat);
+    bridge1.scale.set(7.8, 3.2, 8.2);
+    bridge1.position.set(0, 5.8, -0.5);
+    ship.add(bridge1);
+
+    const bridge2 = new THREE.Mesh(G.box, bridgeMat);
+    bridge2.scale.set(6.4, 2.6, 4.8);
+    bridge2.position.set(0, 8.6, -1.6);
+    ship.add(bridge2);
+
+    // Lit wheelhouse windows & portholes facing quay (-X)
+    for (let pz = -4.0; pz <= 3.0; pz += 1.4) {
+      const port = new THREE.Mesh(G.plane, this.mats.skylineWin);
+      port.scale.set(0.55, 0.48, 1);
+      port.position.set(-3.94, 6.2, pz);
+      port.rotation.y = -Math.PI / 2;
+      ship.add(port);
+    }
+    for (let pz = -3.2; pz <= 0.2; pz += 1.1) {
+      const win = new THREE.Mesh(G.plane, this.mats.skylineWin);
+      win.scale.set(0.75, 0.72, 1);
+      win.position.set(-3.24, 9.0, pz);
+      win.rotation.y = -Math.PI / 2;
+      ship.add(win);
+    }
+
+    // Raked black-and-red steam funnel + soft drifting exhaust smoke
+    const funnel = new THREE.Mesh(G.cylLo, hullMat);
+    funnel.scale.set(1.05, 5.2, 1.05);
+    funnel.position.set(0, 10.6, 1.8);
+    funnel.rotation.x = 0.12;
+    ship.add(funnel);
+    const funnelBand = new THREE.Mesh(G.cylLo, redMat);
+    funnelBand.scale.set(1.09, 1.35, 1.09);
+    funnelBand.position.set(0, 11.4, 1.9);
+    funnelBand.rotation.x = 0.12;
+    ship.add(funnelBand);
+
+    const smokeMat = new THREE.SpriteMaterial({
+      map: this.assets.procTex.glow,
+      color: 0x3b485e,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false
+    });
+    smokeMat.userData.own = true;
+    const smoke = new THREE.Sprite(smokeMat);
+    smoke.scale.set(9, 6, 1);
+    smoke.position.set(0, 14.8, 2.8);
+    ship.add(smoke);
+
+    // Twin cargo derrick masts & booms
+    for (const mz of [-11.5, 11.5]) {
+      const mast = new THREE.Mesh(G.cylLo, this.mats.steelBeam);
+      mast.scale.set(0.24, 13.5, 0.24);
+      mast.position.set(0, 10.5, mz);
+      ship.add(mast);
+
+      const boom = new THREE.Mesh(G.cylLo, this.mats.steelBeam);
+      boom.scale.set(0.12, 9.5, 0.12);
+      boom.position.set(-2.2, 11.2, mz);
+      boom.rotation.z = 0.88;
+      ship.add(boom);
+    }
+
+    worldGroup.add(ship);
   }
 
   _buildGantryCrane(worldGroup, x0, zPos, span) {
@@ -891,12 +1103,23 @@ export class ArchitectureBuilder {
         worldGroup.add(strut);
       }
 
-      // Cool moonlight skylight beam on alternating trusses
+      // Angled wall knee-braces supporting 95m industrial steel roof trusses
+      for (const kx of [4.5, totalW - 4.5]) {
+        const brace = new THREE.Mesh(G.box, mat);
+        brace.scale.set(0.28, 3.8, 0.28);
+        brace.position.set(kx, h - 1.4, z);
+        brace.rotation.z = kx < totalW * 0.5 ? -0.72 : 0.72;
+        worldGroup.add(brace);
+      }
+
+      // Cool moonlight skylight cones across left & right aisles
       if (z % 22 < 11) {
-        const beamCone = new THREE.Mesh(coneGeo, this.mats.skylightCone);
-        beamCone.position.set(totalW * 0.5 + ((z % 3) - 1) * 4, 5.1, z);
-        beamCone.rotation.z = 0.16;
-        worldGroup.add(beamCone);
+        for (const bx of [totalW * 0.33, totalW * 0.67]) {
+          const beamCone = new THREE.Mesh(coneGeo, this.mats.skylightCone);
+          beamCone.position.set(bx, 5.1, z);
+          beamCone.rotation.z = bx < totalW * 0.5 ? 0.16 : -0.16;
+          worldGroup.add(beamCone);
+        }
       }
     }
   }

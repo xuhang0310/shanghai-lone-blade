@@ -356,6 +356,7 @@ export class PhysicsWorld {
         .setCollisionGroups(makeCollisionGroups(GROUP_DEBRIS, GROUP_WORLD | GROUP_PROP | GROUP_DEBRIS)),
       rb
     );
+    this.colliderMap.set(col.handle, { kind: 'corpse', body: rb, mesh });
     // Align waist pivot (~0.82*scale) cleanly so sprawled corpse rests flat on wet ground
     const link = {
       body: rb,
@@ -467,6 +468,15 @@ export class PhysicsWorld {
       const p = l.body.translation();
       const r = l.body.rotation();
       l.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      const cr = l.mesh?.userData?.corpseRelax;
+      if (cr && cr.t < cr.dur) {
+        cr.t = Math.min(cr.dur, cr.t + dt);
+        const k = cr.t / cr.dur;
+        const s = k * k * (3 - 2 * k);
+        for (const tr of cr.tracks) {
+          tr.bone.quaternion.slerpQuaternions(tr.fromQ, tr.toQ, s);
+        }
+      }
       if (l.localOffset) {
         _v.copy(l.localOffset).applyQuaternion(l.mesh.quaternion);
         l.mesh.position.set(p.x + _v.x, p.y + _v.y, p.z + _v.z);

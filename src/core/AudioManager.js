@@ -6,7 +6,10 @@ export class AudioManager {
     this.AC = null;
     this.noiseBuf = null;
     this.BUF = {};
+    this.convolver = null;
     this.revSend = null;
+    this.revBuffers = {};
+    this.pendingEnvStyle = 'cobble';
     this.music = null;
     this.musicOn = true;
     this.musicName = '';
@@ -25,21 +28,13 @@ export class AudioManager {
       const d = this.noiseBuf.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 
-      const ir = AC.createBuffer(2, AC.sampleRate * 1.8, AC.sampleRate);
-      for (let ch = 0; ch < 2; ch++) {
-        const a = ir.getChannelData(ch);
-        let lp = 0;
-        for (let i = 0; i < a.length; i++) {
-          lp += (Math.random() * 2 - 1 - lp) * 0.35;
-          a[i] = lp * Math.pow(1 - i / a.length, 3.2) * (i < 400 ? i / 400 : 1);
-        }
-      }
       const cv = AC.createConvolver();
-      cv.buffer = ir;
+      this.convolver = cv;
       this.revSend = AC.createGain();
       this.revSend.gain.value = 0.5;
       this.revSend.connect(cv);
       cv.connect(AC.destination);
+      this.setEnvironment(this.pendingEnvStyle);
 
       const names = ['pistol', 'smg1', 'smg2', 'smg3', 'shotgun', 'rifle', 'esmg', 'reload', 'pump'];
       for (const n of names) {
@@ -141,9 +136,38 @@ export class AudioManager {
     o.stop(t + dur);
   }
 
+  setEnvironment(style = 'cobble') {
+    this.pendingEnvStyle = style;
+    if (!this.AC || !this.convolver || !this.revSend) return;
+    if (!this.revBuffers[style]) {
+      const AC = this.AC;
+      const cfg =
+        style === 'concrete'
+          ? { dur: 2.5, decay: 2.4, lpK: 0.28, send: 0.68 }
+          : style === 'plank'
+            ? { dur: 1.95, decay: 3.1, lpK: 0.42, send: 0.46 }
+            : { dur: 1.35, decay: 3.6, lpK: 0.32, send: 0.56 };
+      const len = Math.floor(AC.sampleRate * cfg.dur);
+      const ir = AC.createBuffer(2, len, AC.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const a = ir.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < len; i++) {
+          lp += (Math.random() * 2 - 1 - lp) * cfg.lpK;
+          const env = Math.pow(1 - i / len, cfg.decay) * (i < 350 ? i / 350 : 1);
+          a[i] = lp * env;
+        }
+      }
+      this.revBuffers[style] = { buf: ir, send: cfg.send };
+    }
+    const env = this.revBuffers[style];
+    this.convolver.buffer = env.buf;
+    this.revSend.gain.value = env.send;
+  }
+
   playEnemyShot(type, distMeters) {
-    if (!this.AC || distMeters > 56) return;
-    const v = clamp(0.6 * (1 - distMeters / 60), 0.06, 0.6);
+    if (!this.AC || distMeters > 78) return;
+    const v = clamp(0.6 * (1 - distMeters / 82), 0.06, 0.6);
     const n = type === 'soldier' ? 'rifle' : type === 'gunman' ? 'pistol' : 'esmg';
     if (this.BUF[n]) {
       this.playBuf(n, v, type === 'gunman' ? 1.08 : rnd(0.97, 1.03));

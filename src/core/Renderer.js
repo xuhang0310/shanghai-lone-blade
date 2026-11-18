@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -192,11 +193,11 @@ export class GameRenderer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 560);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 720);
 
     // Planar reflection target for puddles & river
     this.reflectRT = new THREE.WebGLRenderTarget(512, 512, { type: THREE.HalfFloatType });
-    this.reflectCam = new THREE.PerspectiveCamera(62, 1, 0.1, 300);
+    this.reflectCam = new THREE.PerspectiveCamera(62, 1, 0.1, 320);
     this.reflectMatrix = new THREE.Matrix4();
     this.reflectTexUniform = { value: this.reflectRT.texture };
     this.reflectMatUniform = { value: this.reflectMatrix };
@@ -218,12 +219,12 @@ export class GameRenderer {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
-    sc.left = -40;
-    sc.right = 40;
-    sc.top = 40;
-    sc.bottom = -40;
+    sc.left = -48;
+    sc.right = 48;
+    sc.top = 48;
+    sc.bottom = -48;
     sc.near = 1;
-    sc.far = 140;
+    sc.far = 160;
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun);
@@ -433,12 +434,69 @@ export class GameRenderer {
     };
 
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.36, 0.88);
+    this.rainLensPass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        uTime: this.timeUniform,
+        uAspect: { value: w / h }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uAspect;
+        varying vec2 vUv;
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+
+        vec3 rainLayer(vec2 uv, float scale, float speed) {
+          vec2 st = uv * vec2(scale, scale * 0.42);
+          st.y += uTime * speed * 0.12;
+          vec2 id = floor(st);
+          vec2 gv = fract(st) - 0.5;
+          float h = hash21(id);
+          float dropOn = step(0.68, h);
+          float dropT = fract(uTime * speed + h * 7.0);
+          float y = -0.35 + 0.7 * (1.0 - dropT);
+          vec2 p = vec2((h - 0.5) * 0.48 + sin(dropT * 10.0 + h * 6.28) * 0.03, y);
+          vec2 d = (gv - p) * vec2(1.0, 0.78);
+          float r = length(d);
+          float bead = smoothstep(0.16, 0.03, r) * dropOn;
+          float trail = smoothstep(0.055, 0.0, abs(gv.x - p.x)) * smoothstep(p.y + 0.34, p.y, gv.y) * step(p.y, gv.y) * dropOn * 0.35;
+          vec2 offs = d * (bead * 0.14 + trail * 0.05);
+          return vec3(offs, bead);
+        }
+
+        void main() {
+          vec2 centerVec = (vUv - 0.5) * vec2(uAspect, 1.0);
+          float edgeMask = smoothstep(0.38, 0.86, length(centerVec) * 1.15);
+          vec3 r1 = rainLayer(vUv * vec2(uAspect, 1.0), 11.0, 0.22);
+          vec3 r2 = rainLayer((vUv + 0.37) * vec2(uAspect, 1.0), 17.0, 0.34);
+          vec2 refr = clamp((r1.xy + r2.xy * 0.7) * edgeMask * 0.16, vec2(-0.0055), vec2(0.0055));
+          vec4 col = texture2D(tDiffuse, clamp(vUv - refr, 0.002, 0.998));
+          float spec = (r1.z + r2.z * 0.7) * edgeMask;
+          col.rgb += vec3(0.45, 0.55, 0.72) * spec * 0.09;
+          gl_FragColor = col;
+        }
+      `
+    });
     this.smaaPass = new SMAAPass();
     this.outputPass = new OutputPass();
 
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.gtaoPass);
     this.composer.addPass(this.bloomPass);
+    this.composer.addPass(this.rainLensPass);
     this.composer.addPass(this.smaaPass);
     this.composer.addPass(this.outputPass);
   }
@@ -453,6 +511,7 @@ export class GameRenderer {
       Math.max(256, Math.round(h * dpr * 0.6))
     );
     this.bloomPass.resolution.set(w, h);
+    this.rainLensPass.uniforms.uAspect.value = w / h;
     this.camera.aspect = w / h;
     this.baseFov = this.camera.fov = w < h ? 74 : 62;
     this.camera.updateProjectionMatrix();
@@ -461,6 +520,7 @@ export class GameRenderer {
   cycleQuality() {
     this.qualityMode = (this.qualityMode + 2) % 3; // 2 -> 1 -> 0 -> 2
     this.gtaoPass.enabled = this.qualityMode === 2;
+    this.rainLensPass.enabled = this.qualityMode === 2;
     this.reflectStrengthUniform.value = this.qualityMode === 2 ? 0.72 : 0;
     this.bloomEnabled = this.qualityMode >= 1;
     this.smaaPass.enabled = this.qualityMode >= 1;
@@ -482,7 +542,7 @@ export class GameRenderer {
     rCam.fov = cam.fov;
     rCam.aspect = cam.aspect;
     rCam.near = cam.near;
-    rCam.far = 220;
+    rCam.far = 320;
     rCam.updateProjectionMatrix();
 
     cam.getWorldDirection(this._camFwd);

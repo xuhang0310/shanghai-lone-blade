@@ -8,6 +8,7 @@ import {
   GROUP_WORLD,
   GROUP_PROP,
   GROUP_ENEMY,
+  GROUP_DEBRIS,
   GROUP_HANGING
 } from './config/constants.js';
 import { AudioManager } from './core/AudioManager.js';
@@ -303,7 +304,7 @@ function ignite(x, z) {
 }
 
 function hurtPlayer(d, sx, sz) {
-  if (P.rollT > 0 || P.inv > 0 || state !== 'play' || d <= 0) return;
+  if (P.rollT > 0 || P.diveT > 0.47 || P.inv > 0 || state !== 'play' || d <= 0) return;
   if (P.armor > 0) {
     const a = Math.min(P.armor, d * 0.6);
     P.armor -= a;
@@ -518,7 +519,7 @@ function buildLevelWorld(lvlIndex) {
   level.generate(lvlIndex);
   const cfg = level.cfg;
   planted = 0;
-  timeLeft = cfg.mission === 'demo' ? 300 : 0;
+  timeLeft = cfg.mission === 'demo' ? (cfg.demoTime || 300) : 0;
 
   worldGroup = new THREE.Group();
   gr.scene.add(worldGroup);
@@ -612,6 +613,7 @@ function buildLevelWorld(lvlIndex) {
   lightningFlash = 0;
   P.bulletTime = false;
   P.btK = 0;
+  P.diveT = 0;
   overMsg = '';
   level.computeFlow(P.x, P.z);
 }
@@ -623,6 +625,7 @@ function startLevel(idx) {
   ui.hidden = true;
   input.lockPointer();
   audio.startRain();
+  audio.setEnvironment(level.cfg.style);
   audio.playMusic(level.cfg.music);
   if (level.cfg.intro) radio(level.cfg.intro, 5.2);
 }
@@ -648,7 +651,7 @@ function menu() {
     '<div class="sub">Shanghai · 1937</div><h1>沪上孤枪</h1>' +
     '<p>黑龙帮盘踞闸北，码头夜夜卸下军火。<b>一个人，四把枪，三条街。</b>打穿弄堂、码头与货仓，了结帮主“黑龙”。</p>' +
     '<div class="keys"><span>WASD</span><span>移动</span><span>鼠标</span><span>转动视角，左键开火，按住右键举枪瞄准</span><span>G · F</span><span>手雷 · 燃烧瓶（真实物理反弹/碎裂）</span>' +
-    '<span>1 2 3 4 / Q</span><span>驳壳枪、冲锋枪、霰弹枪、步枪</span><span>空格 · Shift · C</span><span>跳跃（可跳上木箱/卡车）· 翻滚 · 蹲下</span><span>Tab / V</span><span>子弹时间（放慢世界 0.28x，爆头击杀快速回复专注度）</span><span>R · P · M · H</span><span>换弹 · 暂停 · 音乐 · 画质切换（实时倒影/AO/辉光）</span>' +
+    '<span>1 2 3 4 / Q</span><span>驳壳枪、冲锋枪、霰弹枪、步枪</span><span>空格 · Shift · C</span><span>跳跃（可跳上木箱/电车）· 翻滚 · 蹲下</span><span>Tab / V · 右键+Shift</span><span>子弹时间（0.28x 慢镜）· 飞身鱼跃慢镜射击</span><span>R · P · M · H</span><span>换弹 · 暂停 · 音乐 · 画质切换（镜头雨滴/倒影/AO/辉光）</span>' +
     '<span>触屏</span><span>左半屏移动，右半屏滑动转向，瞄准敌人自动开火</span></div>' +
     (best ? `<p>最高分 <b>${best}</b></p>` : '') +
     '<p class="credit">引擎：Three.js r187 + Rapier3D WASM 物理引擎<br>模型与贴图：Poly Haven、OpenGameArt（CC0）　枪声：The Free Firearm Sound Library（CC0）<br>音乐：“Night on the Docks – Sax” Kevin MacLeod（CC BY 4.0）、“Noire Crime Time” withthelove（CC BY 3.0）、“Jazz Saxaphone”（CC0）</p>',
@@ -719,12 +722,13 @@ function updatePlay(dt) {
       P.bulletTime = false;
       audio.sfx('slowoff');
     }
-  } else {
+  } else if (P.diveT <= 0) {
     P.focus = Math.min(100, P.focus + dt * 6.5);
   }
-  P.btK += ((P.bulletTime ? 1 : 0) - P.btK) * Math.min(1, dt * 12);
-  const simDt = P.bulletTime ? dt * 0.28 : dt;
-  const playerDt = P.bulletTime ? dt * 0.52 : dt;
+  const slowActive = P.bulletTime || P.diveT > 0;
+  P.btK += ((slowActive ? 1 : 0) - P.btK) * Math.min(1, dt * 12);
+  const simDt = slowActive ? dt * 0.28 : dt;
+  const playerDt = slowActive ? dt * 0.52 : dt;
 
   time += simDt;
   if (banner > 0) banner -= dt;
@@ -814,7 +818,7 @@ function updatePlay(dt) {
       dl = 1;
     }
 
-    const spr = g.spread * (1 + P.bloom * 1.8) * (P.moving ? 1.4 : 1) * (1 - 0.55 * P.ads) * (P.crouch ? 0.7 : 1) * (P.air ? 2.4 : 1);
+    const spr = g.spread * (1 + P.bloom * 1.8) * (P.moving ? 1.4 : 1) * (1 - 0.55 * P.ads) * (P.crouch ? 0.7 : 1) * (P.air && P.diveT <= 0 ? 2.4 : 1);
     const a0 = Math.atan2(dz, dx);
     const e0 = Math.asin(clamp(dy / dl, -1, 1));
     for (let i = 0; i < g.pellets; i++) {
@@ -875,7 +879,7 @@ function updatePlay(dt) {
         dy,
         dz,
         segLen,
-        GROUP_WORLD | GROUP_PROP | GROUP_ENEMY | GROUP_HANGING,
+        GROUP_WORLD | GROUP_PROP | GROUP_ENEMY | GROUP_HANGING | (b.pl ? GROUP_DEBRIS : 0),
         b.pl ? physics.playerCollider : null
       );
 
@@ -901,6 +905,12 @@ function updatePlay(dt) {
             b.life = 0;
             break;
           }
+        } else if (meta?.kind === 'corpse' && b.pl) {
+          meta.body.wakeUp();
+          meta.body.applyImpulseAtPoint({ x: (dx / segLen) * 2.8, y: 0.45, z: (dz / segLen) * 2.8 }, pt, true);
+          puff(pt.x, pt.y, pt.z, 4, '#8e1a14', 3.8, 0.35);
+          b.life = 0;
+          break;
         } else if (meta?.kind === 'lantern') {
           const broken = physics.hitLantern(meta.entry, dx * 20, 1.5, dz * 20, 2.2);
           puff(pt.x, pt.y, pt.z, 12, '#ff6830', 6.5, 0.45);
@@ -1162,19 +1172,38 @@ function updatePlay(dt) {
 function syncScene(dt) {
   gr.timeUniform.value = time;
 
-  // Player mesh animation + upper torso Aim IK
+  // Player mesh animation + upper torso Aim IK + Shootdodge airborne dive pose
   if (playerMesh) {
     const rolling = P.rollT > 0;
+    const diving = P.diveT > 0;
     const pu = playerMesh.userData;
-    pu.rate = rolling ? 1.6 : P.air ? 0.5 : P.ads > 0.5 ? 1.5 : 1.12;
-    const mode = state === 'play' && (P.moving || rolling || P.air) ? (P.ads > 0.5 && !rolling ? 'Walk' : 'Run') : 'Idle';
+    pu.rate = rolling ? 1.6 : diving ? 0.45 : P.air ? 0.5 : P.ads > 0.5 ? 1.5 : 1.12;
+    const mode = state === 'play' && (P.moving || rolling || P.air) && !diving ? (P.ads > 0.5 && !rolling ? 'Walk' : 'Run') : 'Idle';
     const aimElev = state === 'play' && !rolling ? -(P.pitch - P.recoil) * 0.65 : 0;
 
     cf.poseMesh(playerMesh, P.x, P.z, rolling ? Math.atan2(P.rdz, P.rdx) : P.ang, mode, dt, aimElev, 0);
     playerMesh.position.y = P.y;
-    pu.pivot.rotation.z = rolling ? -(1 - P.rollT / 0.5) * TAU : 0;
-    pu.pivot.position.y = rolling ? 0.55 : 0.9;
-    pu.pivot.scale.setScalar(rolling ? 0.8 : 1);
+    if (rolling) {
+      pu.pivot.rotation.x = 0;
+      pu.pivot.rotation.z = -(1 - P.rollT / 0.5) * TAU;
+      pu.pivot.position.y = 0.55;
+      pu.pivot.scale.setScalar(0.8);
+    } else if (diving) {
+      const diveEase = Math.sin(Math.min(1, P.diveT / 0.82) * Math.PI);
+      const ca = Math.cos(P.ang);
+      const sa = Math.sin(P.ang);
+      const localFwd = P.rdx * ca + P.rdz * sa;
+      const localRight = -P.rdx * sa + P.rdz * ca;
+      pu.pivot.rotation.x = localRight * 0.95 * diveEase;
+      pu.pivot.rotation.z = -localFwd * 0.95 * diveEase;
+      pu.pivot.position.y = 0.9 + diveEase * 0.34;
+      pu.pivot.scale.setScalar(1);
+    } else {
+      pu.pivot.rotation.x = 0;
+      pu.pivot.rotation.z = 0;
+      pu.pivot.position.y = 0.9;
+      pu.pivot.scale.setScalar(1);
+    }
     playerMesh.scale.y = 1 - 0.3 * P.crouchK;
     playerMesh.visible = state === 'menu' ? false : !(P.inv > 0 && Math.floor(time * 20) % 2);
   }
@@ -1361,7 +1390,7 @@ function frame(ts) {
     physics.step(dt, worldGroup);
   }
 
-  const sceneDt = state === 'play' && P.bulletTime ? dt * 0.28 : dt;
+  const sceneDt = state === 'play' && (P.bulletTime || P.diveT > 0) ? dt * 0.28 : dt;
   syncScene(sceneDt);
   gr.render();
   hud.draw({
@@ -1519,7 +1548,8 @@ window.__game = {
       z: P.z,
       ang: P.ang,
       fps,
-      bulletTime: P.bulletTime,
+      bulletTime: P.bulletTime || P.diveT > 0,
+      dive: P.diveT > 0,
       focus: Math.round(P.focus),
       corpses: physics.dynamicLinks.filter(l => l.fade).length,
       bloom: gr?.bloomEnabled ?? false

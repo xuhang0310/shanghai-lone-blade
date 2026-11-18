@@ -1,5 +1,5 @@
 export const TILE = 2.5; // 1 map tile = 2.5 meters
-export const MW = 26;    // Map width in tiles (65m)
+export const MW = 38;    // Map width in tiles (95m)
 export const TAU = Math.PI * 2;
 
 export const GRAVITY = 19.0;
@@ -24,9 +24,9 @@ export const makeCollisionGroups = (membership, filter) => ((membership & 0xffff
 
 export const LEVELS = [
   {
-    name: '第一关 · 石库门弄堂',
-    h: 58,
-    groups: 9,
+    name: '第一关 · 闸北石库门里弄',
+    h: 82,
+    groups: 13,
     mix: { thug: 5, gunman: 3 },
     style: 'cobble',
     ground: 'cobblestone_05',
@@ -34,27 +34,28 @@ export const LEVELS = [
     music: 'noire-crime-time',
     mission: 'rescue',
     sky: 0x0a1122,
-    fogDensity: 0.017,
+    fogDensity: 0.0115,
     intro: '一九三七年冬，上海。黑龙帮抓走了我们的联络人，关在弄堂深处。找到他，把他活着带出去。'
   },
   {
-    name: '第二关 · 十六铺码头',
-    h: 68,
-    groups: 11,
+    name: '第二关 · 十六铺外滩码头',
+    h: 92,
+    groups: 15,
     mix: { thug: 3, gunman: 3, soldier: 3 },
     style: 'plank',
     ground: 'worn_planks',
     walls: ['dark_brick_wall', 'grey_plaster_02'],
     music: 'night-on-the-docks',
     mission: 'demo',
+    demoTime: 360,
     sky: 0x07131a,
-    fogDensity: 0.015,
-    intro: '军火今夜从码头上岸。五分钟内在三处军火箱上安放炸药，然后撤到北面出口。'
+    fogDensity: 0.0095,
+    intro: '军火今夜从十六铺码头上岸。六分钟内在三处军火箱上安放炸药，然后撤到北面出口。'
   },
   {
-    name: '第三关 · 黑龙帮货仓',
-    h: 62,
-    groups: 10,
+    name: '第三关 · 苏州河大货栈',
+    h: 80,
+    groups: 14,
     mix: { thug: 3, gunman: 2, soldier: 3, gunner: 3 },
     style: 'concrete',
     ground: 'concrete_floor_worn_001',
@@ -63,8 +64,8 @@ export const LEVELS = [
     mission: 'boss',
     boss: true,
     sky: 0x0e0a18,
-    fogDensity: 0.016,
-    intro: '帮主“黑龙”就在货仓深处。这笔账，今夜了结。'
+    fogDensity: 0.0118,
+    intro: '帮主“黑龙”就在苏州河大货栈深处。这笔账，今夜了结。'
   }
 ];
 
@@ -117,5 +118,9 @@ export const SHANGHAI_SIGNS = [
   { text: '米行',   color: '#ffb84a' },
   { text: '旅社',   color: '#ff6ad0' },
   { text: '烟纸店', color: '#ff9040' },
-  { text: '四行栈', color: '#6ac8ff' }
+  { text: '四行栈', color: '#6ac8ff' },
+  { text: '先施百货', color: '#ff5868' },
+  { text: '永安公司', color: '#ffd058' },
+  { text: '大光明', color: '#5ce8ff' },
+  { text: '申报馆', color: '#68ffaa' }
 ];

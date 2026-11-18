@@ -58,6 +58,7 @@ export class PlayerController {
     this.focus = 100;
     this.bulletTime = false;
     this.btK = 0;
+    this.diveT = 0;
     this.mesh = null;
   }
 
@@ -72,6 +73,7 @@ export class PlayerController {
     this.crouchK = 0;
     this.air = false;
     this.rollT = 0;
+    this.diveT = 0;
     this.reloadT = 0;
     this.ads = 0;
     this.recoil = 0;
@@ -83,12 +85,12 @@ export class PlayerController {
   }
 
   currentHeight() {
-    if (this.rollT > 0) return PLAYER_ROLL_HEIGHT;
+    if (this.rollT > 0 || this.diveT > 0) return PLAYER_ROLL_HEIGHT;
     return this.crouch ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
   }
 
   jump(audio, state) {
-    if (this.air || this.rollT > 0 || state !== 'play') return;
+    if (this.air || this.rollT > 0 || this.diveT > 0 || state !== 'play') return;
     this.crouch = false;
     this.vy = PLAYER_JUMP_VEL;
     this.air = true;
@@ -96,7 +98,7 @@ export class PlayerController {
   }
 
   roll(input, audio) {
-    if (this.rollCd > 0 || this.rollT > 0 || this.air) return;
+    if (this.rollCd > 0 || this.rollT > 0 || this.diveT > 0 || this.air) return;
     const { f, r } = input.getMoveAxes();
     const c = Math.cos(this.ang);
     const s = Math.sin(this.ang);
@@ -105,6 +107,22 @@ export class PlayerController {
     if (!dx && !dz) {
       dx = c;
       dz = s;
+    }
+    const dl = Math.hypot(dx, dz) || 1;
+    dx /= dl;
+    dz /= dl;
+    if ((this.bulletTime || input.mouse.right) && this.focus >= 16 && (f || r)) {
+      this.rdx = dx;
+      this.rdz = dz;
+      this.crouch = false;
+      this.diveT = 0.82;
+      this.rollCd = 1.15;
+      this.vy = 3.5;
+      this.air = true;
+      this.focus = Math.max(0, this.focus - 14);
+      audio.sfx('slowon');
+      audio.sfx('roll');
+      return;
     }
     this.rdx = dx;
     this.rdz = dz;
@@ -178,6 +196,11 @@ export class PlayerController {
       moveX = this.rdx * PLAYER_ROLL_SPEED * dt;
       moveZ = this.rdz * PLAYER_ROLL_SPEED * dt;
       this.walk += dt * 20;
+    } else if (this.diveT > 0) {
+      this.diveT -= dt;
+      moveX = this.rdx * PLAYER_ROLL_SPEED * 1.08 * dt;
+      moveZ = this.rdz * PLAYER_ROLL_SPEED * 1.08 * dt;
+      this.moving = true;
     } else {
       const sp = PLAYER_SPEED * (1 - 0.5 * this.ads) * (this.crouch ? 0.5 : 1);
       moveX = mx * sp * dt;
@@ -212,7 +235,7 @@ export class PlayerController {
       physics.setPlayerPosition(this.x, 0, this.z);
     }
 
-    this.still = this.moving || this.rollT > 0 || this.air ? 0 : this.still + dt;
+    this.still = this.moving || this.rollT > 0 || this.diveT > 0 || this.air ? 0 : this.still + dt;
     this.camY += (this.y - this.camY) * Math.min(1, dt * 9);
   }
 

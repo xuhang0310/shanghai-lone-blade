@@ -116,11 +116,71 @@ export class PropsBuilder {
       }
     }
 
+    // 5. 1930s Shanghai Electric Tramcar (有轨铛铛车, ~8.0m long)
+    const tramParts = [
+      // Steel rail track bed beneath tram
+      partSpec(G.box, '#24272e', [0, 0.03, 0], [2.4, 0.06, 9.6]),
+      partSpec(G.box, '#7c828c', [-0.74, 0.06, 0], [0.07, 0.06, 9.6]),
+      partSpec(G.box, '#7c828c', [0.74, 0.06, 0], [0.07, 0.06, 9.6]),
+      // Bogie undercarriage & cowcatcher aprons
+      partSpec(G.box, '#141518', [0, 0.28, 0], [1.75, 0.34, 7.6]),
+      partSpec(G.box, '#1b3328', [0, 0.86, 0], [2.16, 1.05, 7.95]),              // dark green lower panels
+      partSpec(G.box, '#9c7c3a', [0, 1.42, 0], [2.2, 0.08, 8.0]),                // brass waist belt
+      // Dark glazed interior box + cream window pillars
+      partSpec(G.box, '#18242e', [0, 1.92, 0], [1.96, 0.92, 7.45]),
+      partSpec(G.box, '#d8ceb8', [0, 1.92, 3.92], [2.12, 0.96, 0.14]),
+      partSpec(G.box, '#d8ceb8', [0, 1.92, -3.92], [2.12, 0.96, 0.14]),
+      // Clerestory walnut roof
+      partSpec(G.box, '#2d221b', [0, 2.48, 0], [2.24, 0.22, 8.1]),
+      partSpec(G.box, '#211914', [0, 2.74, 0], [1.4, 0.32, 6.2]),
+      // Slanted overhead trolley pole & collector shoe
+      partSpec(G.box, '#1a1c20', [0, 3.0, -0.5], [0.28, 0.18, 0.45]),
+      partSpec(G.cylLo, '#5a606a', [0, 4.02, -1.65], [0.035, 3.1, 0.035], [-0.66, 0, 0]),
+      // Front & rear destination signboards
+      partSpec(G.box, '#141418', [0, 2.52, 4.08], [1.05, 0.26, 0.06]),
+      partSpec(G.box, '#d9a441', [0, 2.52, 4.11], [0.85, 0.14, 0.04]),
+      partSpec(G.box, '#141418', [0, 2.52, -4.08], [1.05, 0.26, 0.06]),
+      partSpec(G.box, '#d9a441', [0, 2.52, -4.11], [0.85, 0.14, 0.04])
+    ];
+    for (const tz of [-3.3, -2.0, -0.65, 0.65, 2.0, 3.3]) {
+      tramParts.push(partSpec(G.box, '#d8ceb8', [-1.05, 1.92, tz], [0.1, 0.96, 0.18]));
+      tramParts.push(partSpec(G.box, '#d8ceb8', [1.05, 1.92, tz], [0.1, 0.96, 0.18]));
+    }
+
+    // 6. 1930s Street Newspaper / Tobacco Kiosk (申报烟纸亭)
+    const kioskParts = [
+      partSpec(G.box, '#1f3429', [0, 0.54, 0], [2.04, 1.08, 2.04]),
+      partSpec(G.box, '#52341e', [0, 1.12, 0], [2.24, 0.1, 2.24]),
+      partSpec(G.box, '#d99b42', [0, 1.66, 0], [1.66, 1.0, 1.66]),
+      partSpec(G.box, '#54241e', [0, 2.34, 0], [2.56, 0.22, 2.56]),
+      partSpec(G.box, '#421b17', [0, 2.58, 0], [1.68, 0.26, 1.68]),
+      partSpec(G.box, '#d9a441', [0, 2.82, 0], [0.2, 0.24, 0.2])
+    ];
+    for (const sx of [-0.88, 0.88]) {
+      for (const sz of [-0.88, 0.88]) {
+        kioskParts.push(partSpec(G.box, '#241913', [sx, 1.68, sz], [0.16, 1.06, 0.16]));
+      }
+    }
+
+    // 7. 1930s Wooden Telegraph Pole with Crossarms & Ceramic Insulators
+    const poleParts = [
+      partSpec(G.cylLo, '#322419', [0, 3.3, 0], [0.11, 6.6, 0.11]),
+      partSpec(G.box, '#281c14', [0, 5.85, 0], [1.55, 0.09, 0.09]),
+      partSpec(G.box, '#281c14', [0, 6.3, 0], [1.55, 0.09, 0.09])
+    ];
+    for (const ix of [-0.65, 0, 0.65]) {
+      poleParts.push(partSpec(G.cylLo, '#dcdad2', [ix, 5.95, 0], [0.032, 0.14, 0.032]));
+      poleParts.push(partSpec(G.cylLo, '#dcdad2', [ix, 6.4, 0], [0.032, 0.14, 0.032]));
+    }
+
     this.templates = {
       rickshaw: buildColoredGeometry(rickParts),
       sandbag: buildColoredGeometry(bagParts),
       truck: buildColoredGeometry(truckParts),
-      sedan: buildColoredGeometry(sedanParts)
+      sedan: buildColoredGeometry(sedanParts),
+      tram: buildColoredGeometry(tramParts),
+      kiosk: buildColoredGeometry(kioskParts),
+      pole: buildColoredGeometry(poleParts)
     };
 
     const p = this.assets.procTex;
@@ -136,6 +196,7 @@ export class PropsBuilder {
       }),
       burlap: new THREE.MeshStandardMaterial({ vertexColors: true, map: p.burlap, roughness: 0.92 }),
       headlight: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff1c4).multiplyScalar(1.9), toneMapped: false }),
+      tramGlow: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffbd66).multiplyScalar(1.35), toneMapped: false }),
       taillight: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff2818).multiplyScalar(1.8), toneMapped: false }),
       plankDebris: new THREE.MeshStandardMaterial({ map: p.plank, roughness: 0.82 }),
       steam: new THREE.SpriteMaterial({
@@ -261,7 +322,7 @@ export class PropsBuilder {
       cone.position.set(l.lx, l.ly - 2.15, l.lz);
       worldGroup.add(cone);
 
-      if (li % 2 === 0 && steamSprites.length < 8) {
+      if (li % 2 === 0 && steamSprites.length < 14) {
         const stm = new THREE.Sprite(this.mats.steam);
         stm.position.set(l.x + rnd(-0.8, 0.8), 0.9, l.z + rnd(-0.8, 0.8));
         stm.scale.set(2.6, 1.8, 1);
@@ -280,7 +341,7 @@ export class PropsBuilder {
       let xr = c0;
       while (level.T(xl, z) !== 1) xl--;
       while (level.T(xr, z) !== 1) xr++;
-      if (xr - xl < 5 || xr - xl > 15 || xl === 0 || xr === MW - 1) continue;
+      if (xr - xl < 5 || xr - xl > 19 || xl === 0 || xr === MW - 1) continue;
 
       const x0 = (xl + 1) * TILE;
       const x1 = xr * TILE;
@@ -411,6 +472,82 @@ export class PropsBuilder {
         }
         worldGroup.add(grp);
         physics.addStaticBox(p.x, 0.72, p.z, 0.92, 0.72, 2.1, p.rotY, { kind: 'metal' }, GROUP_PROP);
+      } else if (p.kind === 'tram') {
+        const grp = new THREE.Group();
+        grp.position.set(p.x, 0, p.z);
+        grp.rotation.y = p.rotY;
+        const body = new THREE.Mesh(this.templates.tram, this.mats.carPaint);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        grp.add(body);
+
+        // Warm lit interior core & front/rear cyclops tram headlamps
+        const core = new THREE.Mesh(G.box, this.mats.tramGlow);
+        core.scale.set(1.5, 0.65, 6.2);
+        core.position.set(0, 1.9, 0);
+        grp.add(core);
+
+        for (const dir of [-1, 1]) {
+          const bulb = new THREE.Mesh(G.sphLo, this.mats.headlight);
+          bulb.scale.set(0.14, 0.14, 0.08);
+          bulb.position.set(0, 1.02, dir * 4.02);
+          grp.add(bulb);
+        }
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 1.3, 5.5, 14, 1, true), M.headlightCone);
+        beam.position.set(0, 0.75, 6.7);
+        beam.rotation.x = -Math.PI / 2 - 0.08;
+        grp.add(beam);
+
+        worldGroup.add(grp);
+        physics.addStaticBox(p.x, 1.55, p.z, 1.08, 1.55, 4.0, p.rotY, { kind: 'metal' }, GROUP_PROP);
+      } else if (p.kind === 'kiosk') {
+        const grp = new THREE.Group();
+        grp.position.set(p.x, 0, p.z);
+        grp.rotation.y = p.rotY;
+        const body = new THREE.Mesh(this.templates.kiosk, this.mats.vertexLit);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        grp.add(body);
+        const lamp = new THREE.Sprite(M.glowSprite);
+        lamp.scale.set(2.4, 2.4, 1);
+        lamp.position.set(0, 1.75, 0);
+        grp.add(lamp);
+        worldGroup.add(grp);
+        physics.addStaticBox(p.x, 1.35, p.z, 1.05, 1.35, 1.05, p.rotY, { kind: 'prop' }, GROUP_PROP);
+      }
+    }
+
+    // 5. Wooden Telegraph Poles & Catenary Overhead Wires
+    if (level.poles?.length) {
+      for (let i = 0; i < level.poles.length; i++) {
+        const pl = level.poles[i];
+        const pm = new THREE.Mesh(this.templates.pole, this.mats.vertexLit);
+        pm.position.set(pl.x, 0, pl.z);
+        pm.castShadow = true;
+        worldGroup.add(pm);
+        physics.addStaticBox(pl.x, 2.0, pl.z, 0.16, 2.0, 0.16, 0, { kind: 'prop' }, GROUP_WORLD);
+
+        if (i > 0) {
+          const prev = level.poles[i - 1];
+          const d = Math.hypot(pl.x - prev.x, pl.z - prev.z);
+          if (d < 32) {
+            for (const wx of [-0.65, 0, 0.65]) {
+              const pts = [];
+              for (let s = 0; s <= 10; s++) {
+                const t = s / 10;
+                const sag = Math.sin(t * Math.PI) * 0.38;
+                pts.push(
+                  new THREE.Vector3(
+                    prev.x + (pl.x - prev.x) * t + wx,
+                    6.34 - sag,
+                    prev.z + (pl.z - prev.z) * t
+                  )
+                );
+              }
+              worldGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), M.wire));
+            }
+          }
+        }
       }
     }
 
