@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MW, TILE, GROUP_PROP, GROUP_WORLD } from '../config/constants.js';
 import { partSpec, buildColoredGeometry } from '../utils/GeometryBuilder.js';
+import { PropInstancer } from './PropInstancer.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -226,6 +227,36 @@ export class PropsBuilder {
         depthWrite: false
       })
     };
+    // Low street clutter is skipped by the puddle-reflection pass (see LAYER_NO_REFLECT)
+    this.mats.vertexLit.userData.noReflect = true;
+    this.mats.burlap.userData.noReflect = true;
+    for (const k of ['crate', 'barrel']) {
+      this.assets.glb[k].traverse(o => {
+        if (o.isMesh) o.material.userData.noReflect = true;
+      });
+    }
+    this.gr.M.lanternCap.userData.noReflect = true;
+  }
+
+  _lanternTemplate() {
+    if (this._lanternTpl) return this._lanternTpl;
+    const G = this.gr.G;
+    const M = this.gr.M;
+    const t = new THREE.Group();
+    const body = new THREE.Mesh(G.sph, M.lanternBody);
+    body.scale.set(0.21, 0.27, 0.21);
+    const caps = new THREE.Mesh(
+      buildColoredGeometry([
+        partSpec(G.cylLo, '#ffffff', [0, 0.26, 0], [0.11, 0.05, 0.11]),
+        partSpec(G.cylLo, '#ffffff', [0, -0.26, 0], [0.11, 0.05, 0.11])
+      ]),
+      M.lanternCap
+    );
+    const tassel = new THREE.Mesh(G.cylLo, M.brass);
+    tassel.scale.set(0.03, 0.14, 0.03);
+    tassel.position.y = -0.35;
+    t.add(body, caps, tassel);
+    return (this._lanternTpl = t);
   }
 
   build(level, worldGroup, physics) {
@@ -236,6 +267,15 @@ export class PropsBuilder {
     const barrelsByTile = {};
     const G = this.gr.G;
     const M = this.gr.M;
+    const inst = new PropInstancer(worldGroup);
+    const xf = new THREE.Object3D();
+    const place = (x, y, z, ry, s, parent = null) => {
+      xf.position.set(x, y, z);
+      xf.rotation.set(0, ry, 0);
+      xf.scale.setScalar(s);
+      xf.updateMatrix();
+      return parent ? new THREE.Matrix4().multiplyMatrices(parent, xf.matrix) : xf.matrix.clone();
+    };
 
     // 1. Crates & Dynamic Explosive Barrels
     for (let z = 0; z < MH; z++) {
@@ -248,28 +288,20 @@ export class PropsBuilder {
         const wz = (z + 0.5) * TILE;
 
         if (g === 2) {
-          const grp = new THREE.Group();
           const rotY = (Math.random() < 0.5 ? 0 : Math.PI / 2) + rnd(-0.04, 0.04);
-          grp.position.set(wx, 0, wz);
-          grp.rotation.y = rotY;
+          const tileXf = place(wx, 0, wz, rotY, 1);
           const isTall = !level.lowTiles.has(k) && Math.random() < 0.55;
           level.tileH[k] = isTall ? 2.02 : 1.04;
 
+          const crateTpl = this.assets.glb.crate;
+          const handles = [];
           for (const ox of [-0.56, 0.56]) {
-            const c = this.assets.glb.crate.clone();
-            c.scale.setScalar(2);
-            c.position.set(ox, 0.04, rnd(-0.04, 0.04));
-            grp.add(c);
+            handles.push(inst.add(crateTpl, place(ox, 0.04, rnd(-0.04, 0.04), 0, 2, tileXf)));
           }
           if (isTall) {
-            const c = this.assets.glb.crate.clone();
-            c.scale.setScalar(2);
-            c.rotation.y = Math.PI / 2 + rnd(-0.2, 0.2);
-            c.position.set(0, 1.0, 0);
-            grp.add(c);
+            handles.push(inst.add(crateTpl, place(0, 1.0, 0, Math.PI / 2 + rnd(-0.2, 0.2), 2, tileXf)));
           }
-          worldGroup.add(grp);
-          tileMesh[k] = grp;
+          tileMesh[k] = handles;
 
           const hy = isTall ? 1.0 : 0.52;
           const res = physics.addStaticBox(
@@ -288,13 +320,13 @@ export class PropsBuilder {
           level.tileH[k] = 1.18;
           barrelsByTile[k] = [];
           for (const [ox, oz] of [[-0.5, -0.4], [0.5, -0.3], [0, 0.5]]) {
-            const b = this.assets.glb.barrel.clone();
+            // Physics drives this proxy; the instancer mirrors it into the shared barrel batch
+            const b = new THREE.Object3D();
             b.scale.setScalar(1.35);
             const bx = wx + ox;
             const bz = wz + oz;
             b.position.set(bx, 0, bz);
             b.rotation.y = rnd(0, Math.PI * 2);
-            worldGroup.add(b);
 
             const link = physics.createDynamicBarrel(
               b,
@@ -305,6 +337,7 @@ export class PropsBuilder {
               0.59,
               { kind: 'barrel', tx: x, tz: z, tileKey: k }
             );
+            link.instHandle = inst.addDynamic(this.assets.glb.barrel, b);
             barrelsByTile[k].push(link);
           }
         }
@@ -313,13 +346,12 @@ export class PropsBuilder {
 
     // 2. Street Lamps + Volumetric Light Cones + Alley Steam
     const steamSprites = [];
+    this._poolTpl ??= new THREE.Mesh(G.circ, M.pool);
+    this._coneTpl ??= new THREE.Mesh(G.lampCone, M.lampCone);
     for (let li = 0; li < level.lamps.length; li++) {
       const l = level.lamps[li];
-      const lm = this.assets.glb.lamp.clone();
       const ry = Math.random() < 0.5 ? 0 : Math.PI;
-      lm.position.set(l.x, 0, l.z);
-      lm.rotation.y = ry;
-      worldGroup.add(lm);
+      inst.add(this.assets.glb.lamp, place(l.x, 0, l.z, ry, 1));
 
       const t = this.assets.lampTop.clone().applyAxisAngle(Y_AXIS, ry);
       l.lx = l.x + t.x;
@@ -331,15 +363,12 @@ export class PropsBuilder {
       sp.position.set(l.lx, l.ly, l.lz);
       worldGroup.add(sp);
 
-      const pl = new THREE.Mesh(G.circ, M.pool);
-      pl.rotation.x = -Math.PI / 2;
-      pl.scale.setScalar(4.8);
-      pl.position.set(l.lx, 0.03, l.lz);
-      worldGroup.add(pl);
-
-      const cone = new THREE.Mesh(G.lampCone, M.lampCone);
-      cone.position.set(l.lx, l.ly - 2.15, l.lz);
-      worldGroup.add(cone);
+      xf.position.set(l.lx, 0.03, l.lz);
+      xf.rotation.set(-Math.PI / 2, 0, 0);
+      xf.scale.setScalar(4.8);
+      xf.updateMatrix();
+      inst.add(this._poolTpl, xf.matrix);
+      inst.add(this._coneTpl, place(l.lx, l.ly - 2.15, l.lz, 0, 1));
 
       if (li % 2 === 0 && steamSprites.length < 14) {
         const stm = new THREE.Sprite(this.mats.steam);
@@ -373,28 +402,10 @@ export class PropsBuilder {
 
       for (const t of [0.25, 0.5, 0.75]) {
         const anchorPos = at(t);
-        const lGrp = new THREE.Group();
-        const body = new THREE.Mesh(G.sph, M.lanternBody);
-        body.scale.set(0.21, 0.27, 0.21);
-        lGrp.add(body);
-
-        const capTop = new THREE.Mesh(G.cylLo, M.lanternCap);
-        capTop.scale.set(0.11, 0.05, 0.11);
-        capTop.position.y = 0.26;
-        lGrp.add(capTop);
-
-        const capBot = new THREE.Mesh(G.cylLo, M.lanternCap);
-        capBot.scale.set(0.11, 0.05, 0.11);
-        capBot.position.y = -0.26;
-        lGrp.add(capBot);
-
-        const tassel = new THREE.Mesh(G.cylLo, M.brass);
-        tassel.scale.set(0.03, 0.14, 0.03);
-        tassel.position.y = -0.35;
-        lGrp.add(tassel);
-
+        // Physics swings this proxy; the instancer mirrors it into the shared lantern batches
+        const lGrp = new THREE.Object3D();
         lGrp.position.set(anchorPos.x, anchorPos.y - 0.36, anchorPos.z);
-        worldGroup.add(lGrp);
+        inst.addDynamic(this._lanternTemplate(), lGrp);
 
         const g2 = new THREE.Sprite(M.redGlow);
         g2.scale.set(1.05, 1.05, 1);
@@ -406,6 +417,7 @@ export class PropsBuilder {
           new THREE.Vector3(anchorPos.x, anchorPos.y - 0.18, anchorPos.z)
         ]);
         const wireLine = new THREE.Line(wireGeo, M.wire);
+        wireLine.userData.dynamic = true;
         worldGroup.add(wireLine);
 
         const entry = physics.createHangingLantern(anchorPos.x, anchorPos.y, anchorPos.z, lGrp, 0.36);
@@ -423,7 +435,6 @@ export class PropsBuilder {
         m.castShadow = true;
         m.receiveShadow = true;
         worldGroup.add(m);
-        physics.addStaticBox(p.x, 0.6, p.z, 0.65, 0.6, 0.9, p.rotY, { kind: 'prop' }, GROUP_PROP);
       } else if (p.kind === 'sandbag') {
         const m = new THREE.Mesh(this.templates.sandbag, this.mats.burlap);
         m.position.set(p.x, 0, p.z);
@@ -431,7 +442,6 @@ export class PropsBuilder {
         m.castShadow = true;
         m.receiveShadow = true;
         worldGroup.add(m);
-        physics.addStaticBox(p.x, 0.38, p.z, 1.15, 0.38, 0.42, p.rotY, { kind: 'prop' }, GROUP_PROP);
       } else if (p.kind === 'truck') {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
@@ -455,14 +465,6 @@ export class PropsBuilder {
         }
         worldGroup.add(grp);
 
-        // Two colliders so player can jump onto the flatbed (y=0.97m) while cab blocks bullets
-        const cos = Math.cos(p.rotY);
-        const sin = Math.sin(p.rotY);
-        const toWorld = (lx, lz) => [p.x + lx * cos + lz * sin, p.z - lx * sin + lz * cos];
-        const [cabX, cabZ] = toWorld(0, 0.95);
-        const [bedX, bedZ] = toWorld(0, -1.28);
-        physics.addStaticBox(cabX, 1.05, cabZ, 0.96, 1.05, 1.32, p.rotY, { kind: 'metal' }, GROUP_PROP);
-        physics.addStaticBox(bedX, 0.49, bedZ, 1.02, 0.49, 1.24, p.rotY, { kind: 'prop' }, GROUP_PROP);
       } else if (p.kind === 'sedan') {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
@@ -490,7 +492,6 @@ export class PropsBuilder {
           grp.add(tail);
         }
         worldGroup.add(grp);
-        physics.addStaticBox(p.x, 0.72, p.z, 0.92, 0.72, 2.1, p.rotY, { kind: 'metal' }, GROUP_PROP);
       } else if (p.kind === 'tram') {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
@@ -518,7 +519,6 @@ export class PropsBuilder {
         grp.add(beam);
 
         worldGroup.add(grp);
-        physics.addStaticBox(p.x, 1.55, p.z, 1.08, 1.55, 4.0, p.rotY, { kind: 'metal' }, GROUP_PROP);
       } else if (p.kind === 'kiosk') {
         const grp = new THREE.Group();
         grp.position.set(p.x, 0, p.z);
@@ -532,8 +532,10 @@ export class PropsBuilder {
         lamp.position.set(0, 1.75, 0);
         grp.add(lamp);
         worldGroup.add(grp);
-        physics.addStaticBox(p.x, 1.35, p.z, 1.05, 1.35, 1.05, p.rotY, { kind: 'prop' }, GROUP_PROP);
       }
+    }
+    for (const b of level.streetBoxes) {
+      physics.addStaticBox(b.x, b.hy, b.z, b.hx, b.hy, b.hz, b.rotY, { kind: b.kind }, GROUP_PROP);
     }
 
     // 5. Wooden Telegraph Poles & Catenary Overhead Wires
@@ -584,7 +586,8 @@ export class PropsBuilder {
       }
     }
 
-    return { tileMesh, tileColliders, barrelsByTile, steamSprites };
+    inst.finalize();
+    return { tileMesh, tileColliders, barrelsByTile, steamSprites, instancer: inst };
   }
 
   spawnCrateFracture(worldGroup, physics, wx, wz, hitDirX, hitDirY, hitDirZ, isTall) {

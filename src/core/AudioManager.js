@@ -16,7 +16,15 @@ export class AudioManager {
     this.foghornTimer = null;
     this.musicOn = true;
     this.rainNode = null;
-    this.rainLowNode = null;
+    this.rainGain = null;
+    this.rainLoading = false;
+    this.rainVolume = 0.32;
+    try {
+      const stored = localStorage.getItem('hsgq_rainVolume');
+      if (stored !== null && stored.trim() !== '' && Number.isFinite(Number(stored))) {
+        this.rainVolume = clamp(Number(stored), 0, 1);
+      }
+    } catch {}
   }
 
   init() {
@@ -138,37 +146,49 @@ export class AudioManager {
     return this.musicOn;
   }
 
-  startRain() {
-    if (!this.AC || this.rainNode) return;
-    const s = this.AC.createBufferSource();
-    const f = this.AC.createBiquadFilter();
-    const g = this.AC.createGain();
-    s.buffer = this.noiseBuf;
-    s.loop = true;
-    f.type = 'highpass';
-    f.frequency.value = 2800;
-    g.gain.value = 0.026;
-    s.connect(f);
-    f.connect(g);
-    g.connect(this.AC.destination);
-    s.start();
-    this.rainNode = s;
+  setRainVolume(value) {
+    const level = Number(value);
+    if (!Number.isFinite(level)) return;
+    this.rainVolume = clamp(level, 0, 1);
+    try { localStorage.setItem('hsgq_rainVolume', String(this.rainVolume)); } catch {}
+    this._updateRainLevel();
+  }
 
-    // Stone/roof mid-low rain patter layer
-    const sl = this.AC.createBufferSource();
-    const fl = this.AC.createBiquadFilter();
-    const gl = this.AC.createGain();
-    sl.buffer = this.noiseBuf;
-    sl.loop = true;
-    fl.type = 'bandpass';
-    fl.frequency.value = 430;
-    fl.Q.value = 0.65;
-    gl.gain.value = 0.028;
-    sl.connect(fl);
-    fl.connect(gl);
-    gl.connect(this.AC.destination);
-    sl.start();
-    this.rainLowNode = sl;
+  _updateRainLevel() {
+    if (!this.rainGain) return;
+    const gain = this.rainGain.gain;
+    const now = this.AC.currentTime;
+    const target = document.hidden ? 0 : this.rainVolume;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(target, now, 0.035);
+    gain.setValueAtTime(target, now + 0.2);
+  }
+
+  async startRain() {
+    const ac = this.AC;
+    if (!ac || this.rainNode || this.rainLoading) return;
+    this.rainLoading = true;
+    try {
+      const response = await fetch('assets/sfx/rain-street.mp3');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await ac.decodeAudioData(await response.arrayBuffer());
+      const source = ac.createBufferSource();
+      const gain = ac.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0;
+      source.connect(gain);
+      gain.connect(ac.destination);
+      source.start(0, Math.random() * buffer.duration);
+      this.rainNode = source;
+      this.rainGain = gain;
+      this._updateRainLevel();
+      document.addEventListener('visibilitychange', () => this._updateRainLevel());
+    } catch (error) {
+      console.warn('街巷雨声载入失败', error);
+    } finally {
+      this.rainLoading = false;
+    }
   }
 
   playStep(style = 'cobble', vol = 0.22, crouch = false) {
@@ -274,6 +294,37 @@ export class AudioManager {
     s.stop(t + dur);
   }
 
+  // Band-passed noise whose centre frequency glides f0 -> f1, with a soft attack (air being cut)
+  sweep(dur, f0, f1, q, vol, attack = 0.035, type = 'bandpass') {
+    if (!this.AC || !this.noiseBuf) return;
+    const t = this.AC.currentTime;
+    const src = this.AC.createBufferSource();
+    const f = this.AC.createBiquadFilter();
+    const g = this.AC.createGain();
+    src.buffer = this.noiseBuf;
+    f.type = type;
+    f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(this.AC.destination);
+    if (this.revSend) g.connect(this.revSend);
+    src.start(t, Math.random() * 0.3);
+    src.stop(t + dur + 0.02);
+  }
+
+  // Struck steel: inharmonic partials ringing out at slightly different rates
+  ring(base, dur, vol) {
+    for (const [ratio, k, d] of [[1, 1, 1], [1.58, 0.6, 0.8], [2.25, 0.45, 0.6], [3.03, 0.3, 0.45]]) {
+      const f = base * ratio * (0.99 + Math.random() * 0.02);
+      this.tone(f, f * 0.995, dur * d, vol * k, 'sine');
+    }
+  }
+
   tone(f0, f1, dur, vol, type = 'sine') {
     if (!this.AC) return;
     const t = this.AC.currentTime;
@@ -340,20 +391,30 @@ export class AudioManager {
       smg: ['smg' + (1 + ((Math.random() * 3) | 0)), 0.72, 1.0],
       shotgun: ['shotgun', 1.0, 1.0],
       rifle: ['rifle', 0.96, 1.0],
+      sniper: ['rifle', 1.0, 0.82],
       zb26: ['rifle', 0.86, 1.06],
       reload: ['reload', 0.55, 1.0]
     }[n];
     if (real && this.BUF[real[0]]) {
       this.playBuf(real[0], real[1], real[2] * rnd(0.96, 1.04));
-      if (n === 'browning' || n === 'revolver' || n === 'zb26') {
-        this.tone(n === 'revolver' ? 195 : 155, 44, 0.14, 0.34, 'triangle');
+      if (n === 'sniper') {
+        this.tone(132, 28, 0.30, 0.58, 'sine');
+        this.noise(0.11, 3200, 1.8, 0.34, 'highpass');
+      } else if (n === 'shotgun') {
+        this.tone(118, 28, 0.24, 0.56, 'sine');
+        this.noise(0.14, 420, 0.65, 0.36, 'lowpass');
+      } else if (n === 'rifle') {
+        this.tone(142, 34, 0.22, 0.46, 'sine');
+        this.noise(0.08, 2800, 1.5, 0.24, 'highpass');
+      } else if (n === 'browning' || n === 'revolver' || n === 'zb26') {
+        this.tone(n === 'revolver' ? 175 : 148, 38, 0.15, 0.38, 'triangle');
       } else if (n === 'mp18') {
-        this.tone(240, 95, 0.055, 0.14, 'square');
+        this.tone(220, 82, 0.06, 0.16, 'triangle');
       }
-      if (n === 'shotgun' || n === 'rifle') {
+      if (n === 'shotgun' || n === 'rifle' || n === 'sniper') {
         setTimeout(() => {
-          if (this.AC && this.BUF.pump) this.playBuf('pump', 0.45, 1);
-        }, 420);
+          if (this.AC && this.BUF.pump) this.playBuf('pump', 0.48, n === 'sniper' ? 0.92 : 1);
+        }, n === 'sniper' ? 480 : 420);
       }
       return;
     }
@@ -422,6 +483,11 @@ export class AudioManager {
       case 'revolver': this.noise(0.16, 1300, 0.7, 0.42); this.tone(190, 45, 0.14, 0.38); break;
       case 'mp18':
       case 'smg': this.noise(0.07, 2400, 0.9, 0.25); this.tone(260, 90, 0.06, 0.2); break;
+      case 'sniper':
+        this.noise(0.36, 760, 0.45, 0.62);
+        this.noise(0.12, 3200, 1.6, 0.34, 'highpass');
+        this.tone(135, 30, 0.28, 0.56);
+        break;
       case 'zb26':
       case 'rifle':
       case 'shotgun': this.noise(0.3, 900, 0.5, 0.55); this.tone(160, 40, 0.22, 0.45); break;
@@ -448,6 +514,140 @@ export class AudioManager {
         break;
       case 'slowon':
         this.tone(240, 78, 0.22, 0.2, 'sine');
+        break;
+      case 'swish':
+        this.sweep(0.2, rnd(2600, 3200), rnd(650, 800), 1.1, 0.22);
+        break;
+      case 'swishHeavy':
+        this.sweep(0.32, rnd(1900, 2300), 340, 0.9, 0.32, 0.07);
+        this.tone(130, 70, 0.28, 0.08, 'sine');
+        break;
+      case 'slashHit':
+        // 3-layer razor cleave: crisp wet-flesh slice + meaty body thump + tight chest sub-drop
+        this.noise(0.055, rnd(3200, 4100), 1.6, 0.22, 'highpass');
+        this.noise(0.11, rnd(1050, 1450), 1.0, 0.36, 'bandpass');
+        this.noise(0.15, rnd(560, 740), 0.75, 0.48, 'lowpass');
+        this.tone(142, 46, 0.13, 0.44, 'sine');
+        break;
+      case 'chopHit':
+        // Devastating overhead heavy cleave: sharp bone-crunch + deep sub-bass weight + faint blade ring
+        this.noise(0.06, 2600, 1.4, 0.28, 'bandpass');
+        this.noise(0.24, 460, 0.65, 0.62, 'lowpass');
+        this.tone(108, 28, 0.22, 0.58, 'sine');
+        this.tone(185, 58, 0.12, 0.26, 'triangle');
+        this.ring(rnd(1680, 1920), 0.28, 0.05);
+        break;
+      case 'fleshHit':
+        // Visceral bullet-into-flesh impact (replaces thin UI beep)
+        this.noise(0.042, rnd(1550, 2250), 1.4, 0.22, 'bandpass');
+        this.noise(0.09, rnd(340, 520), 0.85, 0.38, 'lowpass');
+        this.tone(118, 44, 0.095, 0.36, 'sine');
+        break;
+      case 'headshot':
+        // Crisp skull-crack transient + tight metallic overtone + heavy sub-drop
+        this.noise(0.038, rnd(2600, 3400), 1.8, 0.32, 'bandpass');
+        this.noise(0.085, 480, 0.8, 0.34, 'lowpass');
+        this.tone(145, 38, 0.12, 0.42, 'sine');
+        this.ring(rnd(2150, 2480), 0.22, 0.09);
+        break;
+      case 'helmetHit':
+        // Steel helmet clang + spark scrape + dull concussion underneath
+        this.noise(0.045, 4200, 1.6, 0.26, 'highpass');
+        this.ring(rnd(2420, 2860), 0.48, 0.14);
+        this.ring(rnd(1420, 1680), 0.24, 0.08);
+        this.tone(135, 52, 0.10, 0.30, 'triangle');
+        break;
+      case 'killConfirm':
+        // Restrained noir lethal thud + low muted brass resonance
+        this.tone(92, 30, 0.19, 0.44, 'sine');
+        this.noise(0.11, 320, 0.7, 0.30, 'lowpass');
+        this.ring(980, 0.20, 0.065);
+        break;
+      case 'killHead':
+        // Decisive lethal headshot confirmation
+        this.noise(0.042, 3100, 1.8, 0.34, 'bandpass');
+        this.tone(115, 28, 0.22, 0.52, 'sine');
+        this.ring(1960, 0.28, 0.11);
+        this.ring(2940, 0.18, 0.055);
+        break;
+      case 'bladeClang':
+        this.noise(0.03, 5200, 1.5, 0.2, 'highpass');
+        this.ring(rnd(1750, 1950), 0.9, 0.11);
+        break;
+      case 'parryClang':
+        // Signature Sekiro-style razor-sharp steel parry ring + spark burst + chest snap
+        this.noise(0.04, 5600, 1.8, 0.34, 'highpass');
+        this.ring(rnd(2680, 2940), 0.85, 0.18);
+        this.ring(rnd(4050, 4420), 0.55, 0.10);
+        this.ring(rnd(1340, 1480), 0.45, 0.11);
+        this.tone(165, 52, 0.13, 0.42, 'sine');
+        break;
+      case 'guardBreak':
+        // Deep posture-shatter resonance + metallic crack
+        this.noise(0.14, 1800, 1.1, 0.42, 'bandpass');
+        this.tone(118, 26, 0.38, 0.62, 'sine');
+        this.ring(820, 0.65, 0.16);
+        this.ring(1640, 0.42, 0.09);
+        break;
+      case 'perilGong':
+        // Sharp crimson warning chime for unblockable enemy overhead strikes (危!)
+        this.tone(740, 520, 0.24, 0.28, 'sawtooth');
+        this.ring(1480, 0.38, 0.13);
+        this.tone(110, 62, 0.22, 0.32, 'triangle');
+        break;
+      case 'ultIaido':
+        // Ghost-step iaido dash cut: sharp unsheathe ring + wind-tear whoosh + deep shock
+        this.sweep(0.24, 5800, 1400, 1.6, 0.36, 0.02, 'highpass');
+        this.ring(3120, 0.62, 0.13);
+        this.tone(150, 36, 0.24, 0.50, 'sine');
+        break;
+      case 'ultCleave':
+        // Overhead ground-shattering slam
+        this.noise(0.32, 320, 0.55, 0.72, 'lowpass');
+        this.noise(0.12, 2200, 1.2, 0.34, 'bandpass');
+        this.tone(98, 22, 0.42, 0.68, 'sine');
+        this.ring(1260, 0.48, 0.10);
+        break;
+      case 'stoneClang':
+        this.noise(0.12, 2500, 0.9, 0.3, 'bandpass');
+        this.ring(rnd(2300, 2600), 0.35, 0.07);
+        break;
+      case 'woodChop':
+        this.noise(0.12, 480, 0.8, 0.5, 'lowpass');
+        this.tone(230, 110, 0.09, 0.22, 'triangle');
+        this.noise(0.07, 3400, 1, 0.1, 'highpass');
+        break;
+      case 'bladeDraw':
+        this.sweep(0.34, 3200, 7600, 2.5, 0.14, 0.05, 'highpass');
+        setTimeout(() => this.AC && this.ring(2350, 0.6, 0.05), 300);
+        break;
+      case 'bladeSheathe':
+        this.sweep(0.3, 7000, 2800, 2.5, 0.12, 0.04, 'highpass');
+        setTimeout(() => this.AC && this.tone(900, 700, 0.05, 0.18, 'square'), 320);
+        break;
+      case 'deadEyeOn':
+        this.tone(320, 52, 0.55, 0.26, 'sine');
+        this.noise(0.5, 260, 0.6, 0.18, 'lowpass');
+        break;
+      case 'heart':
+        this.tone(64, 40, 0.11, 0.34, 'sine');
+        setTimeout(() => this.AC && this.tone(58, 38, 0.1, 0.24, 'sine'), 170);
+        break;
+      case 'mark':
+        this.tone(2300, 1650, 0.05, 0.11, 'triangle');
+        this.noise(0.03, 5200, 2.5, 0.06, 'highpass');
+        break;
+      case 'duelDraw':
+        this.noise(0.08, 2600, 1.2, 0.2, 'highpass');
+        this.tone(1200, 600, 0.06, 0.1, 'square');
+        break;
+      case 'bell':
+        this.tone(660, 652, 1.6, 0.16, 'sine');
+        this.tone(1320, 1300, 1.1, 0.06, 'sine');
+        break;
+      case 'killCam':
+        this.tone(180, 40, 0.9, 0.22, 'sine');
+        this.noise(0.7, 140, 0.5, 0.2, 'lowpass');
         break;
       case 'slowoff':
         this.tone(85, 250, 0.18, 0.16, 'sine');

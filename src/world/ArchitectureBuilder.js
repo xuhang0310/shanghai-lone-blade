@@ -406,6 +406,10 @@ export class ArchitectureBuilder {
         new THREE.MeshStandardMaterial({ map: makeVintagePosterTexture('黑龙令', '悬赏通缉', '#c4aa82', '#7a1c14'), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 })
       ]
     };
+    // Thin trims & facade dressing barely register in the dark puddle reflection
+    for (const m of [this.mats.trim, this.mats.stoneVertex, this.mats.pierWood, ...this.mats.posterMats]) {
+      m.userData.noReflect = true;
+    }
   }
 
   build(level, worldGroup, physics) {
@@ -1133,20 +1137,29 @@ export class ArchitectureBuilder {
 
   _inst(worldGroup, geo, mat, list, out, sx = 1, sy = 1, sz = 1) {
     if (!list.length) return;
-    const im = new THREE.InstancedMesh(geo, mat, list.length);
     const mx4 = new THREE.Matrix4();
     const q4 = new THREE.Quaternion();
     const p4 = new THREE.Vector3();
     const s4 = new THREE.Vector3(sx, sy, sz);
     const Y = new THREE.Vector3(0, 1, 0);
 
-    list.forEach((w, i) => {
-      q4.setFromAxisAngle(Y, w[3]);
-      p4.set(w[0] + Math.sin(w[3]) * out, w[1], w[2] + Math.cos(w[3]) * out);
-      mx4.compose(p4, q4, s4);
-      im.setMatrixAt(i, mx4);
-    });
-    im.frustumCulled = false;
-    worldGroup.add(im);
+    // One InstancedMesh per 48m chunk so off-screen facades get frustum culled in every pass
+    const chunks = new Map();
+    for (const w of list) {
+      const key = `${Math.floor(w[0] / 48)},${Math.floor(w[2] / 48)}`;
+      if (!chunks.has(key)) chunks.set(key, []);
+      chunks.get(key).push(w);
+    }
+    for (const items of chunks.values()) {
+      const im = new THREE.InstancedMesh(geo, mat, items.length);
+      items.forEach((w, i) => {
+        q4.setFromAxisAngle(Y, w[3]);
+        p4.set(w[0] + Math.sin(w[3]) * out, w[1], w[2] + Math.cos(w[3]) * out);
+        mx4.compose(p4, q4, s4);
+        im.setMatrixAt(i, mx4);
+      });
+      im.computeBoundingSphere();
+      worldGroup.add(im);
+    }
   }
 }

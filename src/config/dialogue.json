@@ -1,0 +1,727 @@
+{
+  "alley-entry": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "这场雨，来得正好。黑龙帮，该算账了。",
+    "xiaLine": "听，雨把脚步声盖住了。走，找黑龙算账。"
+  },
+  "dock-entry": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "江上风大。趁现在，走。"
+  },
+  "warehouse-entry": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "黑龙，十年恩怨，就在这间货栈做个了断。",
+    "xiaLine": "黑龙，你欠了十年的账。今晚，该还了。"
+  },
+  "blade-debt": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "这一刀，替弄堂里的冤魂讨的！"
+  },
+  "blade-end": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "刀下不留第二回。"
+  },
+  "blade-path": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "挡我路者——一刀了断。"
+  },
+  "quiet": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "轻点。别惊动弄堂里的人。"
+  },
+  "shot-debt": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "这一枪，替上海滩收你的命！"
+  },
+  "shot-warning": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "下辈子记住，别拿枪指着我的头。"
+  },
+  "shot-path": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "谁还敢挡我的路？",
+    "xiaLine": "还有谁要拦我？"
+  },
+  "boss-challenge": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "よくここまで来たな。十年ぶりか。",
+    "zh": "你还真走到这儿了。十年没见了吧。"
+  },
+  "boss-reply": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "废话留着去黄泉说吧。",
+    "xiaLine": "你这句话，我等了十年。"
+  },
+  "mag-empty": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "弹匣见底……掩护换弹！"
+  },
+  "rescue-contact": {
+    "lang": "zh-CN",
+    "speaker": "地下联络人",
+    "line": "兄弟，你可算来了！往北走，那边有出口。",
+    "xiaLine": "女侠，你可算来了！往北走，那边有出口。"
+  },
+  "rescue-reply": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "跟紧我，别站在灯底下。"
+  },
+  "retreat": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "都好了！快，撤出码头！"
+  },
+  "reload": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "我换弹。别露头！"
+  },
+  "spot-thug": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "おい、路地に誰かいるぞ！",
+    "zh": "喂，弄堂里有人！",
+    "group": "spot"
+  },
+  "spot-gunman": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "あの腕利きか！隠れろ！",
+    "zh": "是那个高手？快躲起来！",
+    "group": "spot"
+  },
+  "spot-soldier": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "埠頭に侵入者だ！",
+    "zh": "有人闯进码头了！",
+    "group": "spot"
+  },
+  "spot-officer": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "全員、あいつを逃がすな！",
+    "zh": "都听着，别让那家伙跑了！",
+    "group": "spot"
+  },
+  "spot-gunner": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "来たぞ！近寄らせるな！",
+    "zh": "来了！别让那家伙靠近！",
+    "group": "spot"
+  },
+  "spot-boss": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "この倉庫から、生きては出られんぞ。",
+    "zh": "你休想活着走出这间货栈。",
+    "group": "spot"
+  },
+  "spot": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "いたぞ！あそこだ！",
+    "zh": "找着了！在那儿！",
+    "group": "spot"
+  },
+  "spot-gang": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "おい、よそ者がいるぞ！",
+    "zh": "喂，有个生面孔！",
+    "group": "spot"
+  },
+  "charge": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "逃がすか！覚悟しろ！",
+    "zh": "想跑？受死吧！",
+    "group": "charge"
+  },
+  "charge-gang": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "ここを通すかよ！",
+    "zh": "想从这儿过？没门！",
+    "group": "charge"
+  },
+  "struggle": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "まだ終わっちゃいねえ！",
+    "zh": "还没完呢！"
+  },
+  "surrender": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "待て、撃つな！降参だ！",
+    "zh": "等等，别开枪！我投降！",
+    "group": "surrender"
+  },
+  "surrender-enemy": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "待ってくれ、もう手は出さない！",
+    "zh": "等等！我不动手了！",
+    "group": "surrender"
+  },
+  "surrender-gunman": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "おい、待て。もう銃は置いた！",
+    "zh": "喂，等等。我已经把枪放下了！",
+    "group": "surrender"
+  },
+  "surrender-guard": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "撃たないでくれ！両手を上げる！",
+    "zh": "别开枪！我这就把双手举起来！",
+    "group": "surrender"
+  },
+  "surrender-officer": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "わかった。もう戦わない。",
+    "zh": "好。我不再抵抗了。",
+    "group": "surrender"
+  },
+  "surrender-gunner": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "もう撃てねえよ！やめてくれ！",
+    "zh": "我开不了枪了！求你住手！",
+    "group": "surrender"
+  },
+  "witness": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "おい、あいつがやられたぞ！",
+    "zh": "喂，那家伙被撂倒了！",
+    "group": "witness"
+  },
+  "witness-enemy": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "見たか？あいつが倒れたぞ！",
+    "zh": "看见了吗？那家伙倒下了！",
+    "group": "witness"
+  },
+  "witness-thug": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "うそだろ、今のを見たか！",
+    "zh": "不会吧！刚才那一下，你看见没？",
+    "group": "witness"
+  },
+  "witness-gunman": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "なんてこった。あいつがやられた。",
+    "zh": "糟了，那家伙栽了。",
+    "group": "witness"
+  },
+  "witness-guard": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "そんな、目の前でやられるなんて！",
+    "zh": "怎么会……他就在我眼前倒下了！",
+    "group": "witness"
+  },
+  "witness-officer": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "何をしている！返事をしろ！",
+    "zh": "你在干什么！回话！",
+    "group": "witness"
+  },
+  "witness-gunner": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "おい、しっかりしろ！聞こえるか！",
+    "zh": "喂，撑住！听得见吗？",
+    "group": "witness"
+  },
+  "witness-boss": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "俺の目の前で、よくも。",
+    "zh": "当着我的面，你也敢动手。",
+    "group": "witness"
+  },
+  "ally-down": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "仲間が倒れた！誰か来てくれ！",
+    "zh": "有兄弟倒下了！快来人！",
+    "group": "ally-down"
+  },
+  "ally-down-enemy": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "おい、大丈夫か！目を開けろ！",
+    "zh": "喂，你怎么样？睁开眼！",
+    "group": "ally-down"
+  },
+  "ally-down-thug": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "おい、返事をしろよ！",
+    "zh": "喂，你倒是应一声啊！",
+    "group": "ally-down"
+  },
+  "ally-down-gunman": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "おい、誰か手を貸してくれ！",
+    "zh": "喂，谁来搭把手！",
+    "group": "ally-down"
+  },
+  "ally-down-guard": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "一人やられた！応援を頼む！",
+    "zh": "我们倒了一个！请求支援！",
+    "group": "ally-down"
+  },
+  "ally-down-officer": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "倒れたのは誰だ？名前を言え！",
+    "zh": "谁倒下了？把名字报上来！",
+    "group": "ally-down"
+  },
+  "ally-down-gunner": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "倒れたぞ！誰か来てくれ！",
+    "zh": "有人倒下了！快来人！",
+    "group": "ally-down"
+  },
+  "ally-down-boss": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "また一人か。何をやっている。",
+    "zh": "又倒了一个。你们在干什么？",
+    "group": "ally-down"
+  },
+  "brief-0": {
+    "lang": "zh-CN",
+    "speaker": "",
+    "line": "一九三七年冬，上海。黑龙帮抓走了我们的联络人，关在弄堂深处。找到他，把他活着带出去。"
+  },
+  "brief-1": {
+    "lang": "zh-CN",
+    "speaker": "",
+    "line": "军火今夜从十六铺码头上岸。六分钟内在三处军火箱上安放炸药，然后撤到北面出口。"
+  },
+  "brief-2": {
+    "lang": "zh-CN",
+    "speaker": "",
+    "line": "帮主“黑龙”就在苏州河大货栈深处。这笔账，今夜了结。"
+  },
+  "heard-shot": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "今の音、聞こえただろ？",
+    "zh": "刚才那声，你也听见了吧？",
+    "group": "heard-shot"
+  },
+  "heard-shot-gang": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "なあ、今の音はなんだ？",
+    "zh": "哎，刚才什么声儿？",
+    "group": "heard-shot"
+  },
+  "heard-shot-thug": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "今の、鉄砲の音じゃねえか。",
+    "zh": "刚才那声，是枪响吧？",
+    "group": "heard-shot"
+  },
+  "heard-shot-gunner": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "一発、聞こえたぞ。",
+    "zh": "我听见一声枪响。",
+    "group": "heard-shot"
+  },
+  "heard-shot-boss": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "銃の音だ。誰が撃った？",
+    "zh": "是枪声。谁开的枪？",
+    "group": "heard-shot"
+  },
+  "heard-shot-officer": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "今の銃声はどこだ？",
+    "zh": "刚才的枪声是从哪儿传来的？",
+    "group": "heard-shot"
+  },
+  "heard-shot-guard": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "今、確かに銃声がした。",
+    "zh": "刚才确实有枪声。",
+    "group": "heard-shot"
+  },
+  "heard-shot-gunman": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "今の音、近かったぞ。",
+    "zh": "刚才那声，离这儿很近。",
+    "group": "heard-shot"
+  },
+  "boss-summon": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "お前たち、ここへ集まれ！",
+    "zh": "你们都给我过来！"
+  },
+  "near-idle-thug-1": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "靴の中までびしょ濡れだ。",
+    "zh": "连鞋里都湿透了。",
+    "group": "near-idle"
+  },
+  "near-idle-thug-2": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "腹が減ったな。飯はまだか。",
+    "zh": "肚子都饿了，怎么还不开饭？",
+    "group": "near-idle"
+  },
+  "near-alert-thug-1": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "おい、どこへ行く気だ！",
+    "zh": "喂，你想上哪儿去！",
+    "group": "near-alert"
+  },
+  "near-alert-thug-2": {
+    "lang": "ja-JP",
+    "actor": "thug",
+    "speaker": "黒龍の用心棒",
+    "line": "なんだ、その目は。",
+    "zh": "你那是什么眼神？",
+    "group": "near-alert"
+  },
+  "near-idle-gunman-1": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "煙草が一本、残ってたはずだ。",
+    "zh": "我记得还剩一支烟。",
+    "group": "near-idle"
+  },
+  "near-idle-gunman-2": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "雨の日は、昔の傷が痛む。",
+    "zh": "一到雨天，老伤就疼。",
+    "group": "near-idle"
+  },
+  "near-alert-gunman-1": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "おっと、そこまでだ。",
+    "zh": "慢着，就站那儿。",
+    "group": "near-alert"
+  },
+  "near-alert-gunman-2": {
+    "lang": "ja-JP",
+    "actor": "gunman",
+    "speaker": "黒龍の拳銃使い",
+    "line": "俺を探してたのか？",
+    "zh": "你在找我？",
+    "group": "near-alert"
+  },
+  "near-idle-guard-1": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "交代はまだかな。足が冷える。",
+    "zh": "怎么还不换岗？脚都冰凉了。",
+    "group": "near-idle"
+  },
+  "near-idle-guard-2": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "夜明けまで、あとどれくらいだ。",
+    "zh": "离天亮还有多久啊？",
+    "group": "near-idle"
+  },
+  "near-alert-guard-1": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "止まれ！ここで何をしてる！",
+    "zh": "站住！你在这儿干什么？",
+    "group": "near-alert"
+  },
+  "near-alert-guard-2": {
+    "lang": "ja-JP",
+    "actor": "guard",
+    "speaker": "埠頭の衛兵",
+    "line": "そこだ！顔を見せろ！",
+    "zh": "在那儿！把脸露出来！",
+    "group": "near-alert"
+  },
+  "near-idle-officer-1": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "交代の時間だ。報告はどうした。",
+    "zh": "该换岗了。怎么还没人来报告？",
+    "group": "near-idle"
+  },
+  "near-idle-officer-2": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "この雨では、船も遅れるな。",
+    "zh": "照这雨势，船也得晚到。",
+    "group": "near-idle"
+  },
+  "near-alert-officer-1": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "貴様か、騒ぎを起こしたのは。",
+    "zh": "就是你在闹事？",
+    "group": "near-alert"
+  },
+  "near-alert-officer-2": {
+    "lang": "ja-JP",
+    "actor": "officer",
+    "speaker": "警備隊長",
+    "line": "その場を動くな！両手を見せろ！",
+    "zh": "站着别动！把两只手都伸出来！",
+    "group": "near-alert"
+  },
+  "near-idle-gunner-1": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "この雨、いつまで続くんだ。",
+    "zh": "这雨到底要下到什么时候？",
+    "group": "near-idle"
+  },
+  "near-idle-gunner-2": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "早く朝にならねえかな。",
+    "zh": "天怎么还不亮啊？",
+    "group": "near-idle"
+  },
+  "near-alert-gunner-1": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "おい、どこから来た！",
+    "zh": "喂，你从哪儿来的？",
+    "group": "near-alert"
+  },
+  "near-alert-gunner-2": {
+    "lang": "ja-JP",
+    "actor": "gunner",
+    "speaker": "機関銃手",
+    "line": "近いぞ！すぐそこだ！",
+    "zh": "离得很近！就在那儿！",
+    "group": "near-alert"
+  },
+  "near-idle-boss-1": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "また雨漏りか。この倉庫も古くなった。",
+    "zh": "又漏雨了。这货栈也有年头了。",
+    "group": "near-idle"
+  },
+  "near-idle-boss-2": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "あれからもう十年か。",
+    "zh": "一晃，那件事都过去十年了。",
+    "group": "near-idle"
+  },
+  "near-alert-boss-1": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "その目、昔と変わらんな。",
+    "zh": "你那眼神，还是跟当年一样。",
+    "group": "near-alert"
+  },
+  "near-alert-boss-2": {
+    "lang": "ja-JP",
+    "actor": "boss",
+    "speaker": "黒龍",
+    "line": "ようやく会えたな。",
+    "zh": "咱们终于见面了。",
+    "group": "near-alert"
+  },
+  "near-idle-enemy-1": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "もう少しで夜が明ける。",
+    "zh": "再过一会儿，天就亮了。",
+    "group": "near-idle"
+  },
+  "near-idle-enemy-2": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "ああ、手がかじかむ。",
+    "zh": "唉，手都冻僵了。",
+    "group": "near-idle"
+  },
+  "near-alert-enemy-1": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "誰だ、そこにいるのは！",
+    "zh": "谁在那儿！",
+    "group": "near-alert"
+  },
+  "near-alert-enemy-2": {
+    "lang": "ja-JP",
+    "actor": "enemy",
+    "speaker": "見張り",
+    "line": "おい、顔を上げろ！",
+    "zh": "喂，把头抬起来！",
+    "group": "near-alert"
+  },
+  "near-idle-gang-1": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "茶がすっかり冷めちまった。",
+    "zh": "这茶都凉透了。",
+    "group": "near-idle"
+  },
+  "near-idle-gang-2": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "あいつ、また遅刻かよ。",
+    "zh": "那家伙又迟到了？",
+    "group": "near-idle"
+  },
+  "near-alert-gang-1": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "なんだ、お前は！",
+    "zh": "你是干什么的！",
+    "group": "near-alert"
+  },
+  "near-alert-gang-2": {
+    "lang": "ja-JP",
+    "actor": "gang",
+    "speaker": "黒龍の子分",
+    "line": "おい、勝手に入るな！",
+    "zh": "喂，别乱闯！",
+    "group": "near-alert"
+  },
+  "near-hero-1": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "没错，就在跟前。",
+    "xiaLine": "听见了，离我不远。",
+    "group": "near-hero"
+  },
+  "near-hero-2": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "这声音，我记得。",
+    "xiaLine": "这口气，我可忘不了。",
+    "group": "near-hero"
+  },
+  "near-hero-3": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "这地方，十年没变。",
+    "xiaLine": "小时候，我也走过这儿。",
+    "group": "near-hero"
+  },
+  "near-hero-4": {
+    "lang": "zh-CN",
+    "speaker": "hero",
+    "line": "倒省得我找了。",
+    "xiaLine": "还真让我碰上了。",
+    "group": "near-hero"
+  }
+}

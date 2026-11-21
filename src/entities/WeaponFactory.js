@@ -10,7 +10,8 @@ export const WEAPON_TIPS = {
   smg: 0.64,
   shotgun: 0.84,
   rifle: 0.94,
-  zb26: 0.92
+  zb26: 0.92,
+  sniper: 1.04
 };
 
 export class WeaponFactory {
@@ -183,6 +184,33 @@ export class WeaponFactory {
       zbEntries.push({ geo: G.cylLo, pos: [x, 0.048, 0], rot: [0, 0, R], scale: [0.027, 0.008, 0.027], matIndex: 0 });
     }
     this.geos.zb26 = buildMultiMatGeometry(zbEntries);
+
+    // 10. Mauser Kar98k Optical Sniper Rifle (毛瑟 Kar98k 光学狙击步枪 + 德制4倍蔡司瞄具)
+    this.geos.sniper = buildMultiMatGeometry([
+      { geo: G.cyl, pos: [0.58, 0.048, 0], rot: [0, 0, R], scale: [0.015, 0.90, 0.015], matIndex: 0 },       // precision heavy barrel
+      { geo: G.cylLo, pos: [1.01, 0.048, 0], rot: [0, 0, R], scale: [0.020, 0.055, 0.020], matIndex: 2 },   // brass muzzle crown
+      { geo: G.box, pos: [0.08, 0.046, 0], scale: [0.24, 0.046, 0.038], matIndex: 0 },                       // Mauser bolt receiver
+      { geo: G.cylLo, pos: [0.04, 0.036, 0.032], rot: [R + 0.35, 0, 0], scale: [0.008, 0.058, 0.008], matIndex: 2 }, // bent sniper bolt handle
+      { geo: G.sphLo, pos: [0.04, 0.020, 0.060], scale: [0.014, 0.014, 0.014], matIndex: 2 },                // brass bolt knob
+      { geo: G.box, pos: [0.27, 0.018, 0], scale: [0.74, 0.056, 0.042], matIndex: 1 },                       // full sniper walnut stock
+      { geo: G.box, pos: [-0.22, -0.020, 0], rot: [0, 0, -0.13], scale: [0.31, 0.102, 0.042], matIndex: 1 }, // buttstock
+      { geo: G.box, pos: [-0.18, 0.024, 0.006], rot: [0, 0, -0.08], scale: [0.16, 0.028, 0.032], matIndex: 1 }, // raised cheekpiece
+      { geo: G.box, pos: [-0.37, -0.040, 0], rot: [0, 0, -0.13], scale: [0.016, 0.106, 0.044], matIndex: 2 }, // brass buttplate
+      { geo: G.box, pos: [0.48, 0.032, 0], scale: [0.022, 0.060, 0.048], matIndex: 2 },                      // barrel band
+      { geo: G.box, pos: [0.72, 0.032, 0], scale: [0.020, 0.056, 0.046], matIndex: 2 },                      // front nosecap
+      { geo: G.box, pos: [0.97, 0.068, 0], scale: [0.016, 0.018, 0.012], matIndex: 2 },                      // hooded front sight
+      // Zeiss ZF39 optical scope assembly (high-mount rings, slender steel tube, flared brass-ringed bells & turrets)
+      { geo: G.box, pos: [0.03, 0.084, 0], scale: [0.024, 0.044, 0.026], matIndex: 0 },                      // rear scope mount bracket
+      { geo: G.box, pos: [0.21, 0.084, 0], scale: [0.024, 0.044, 0.026], matIndex: 0 },                      // front scope mount bracket
+      { geo: G.cyl, pos: [0.13, 0.112, 0], rot: [0, 0, R], scale: [0.016, 0.34, 0.016], matIndex: 0 },       // main scope optical tube
+      { geo: G.cylLo, pos: [0.30, 0.112, 0], rot: [0, 0, R], scale: [0.024, 0.075, 0.024], matIndex: 0 },    // flared front objective bell
+      { geo: G.cylLo, pos: [0.338, 0.112, 0], rot: [0, 0, R], scale: [0.025, 0.010, 0.025], matIndex: 2 },   // brass objective bezel ring
+      { geo: G.cylLo, pos: [-0.045, 0.112, 0], rot: [0, 0, R], scale: [0.021, 0.062, 0.021], matIndex: 0 },  // flared rear eyepiece bell
+      { geo: G.cylLo, pos: [-0.076, 0.112, 0], rot: [0, 0, R], scale: [0.022, 0.010, 0.022], matIndex: 2 },  // brass eyepiece bezel ring
+      { geo: G.cylLo, pos: [0.125, 0.134, 0], scale: [0.011, 0.018, 0.011], matIndex: 2 },                   // brass elevation turret
+      { geo: G.cylLo, pos: [0.125, 0.112, 0.021], rot: [R, 0, 0], scale: [0.010, 0.016, 0.010], matIndex: 2 }, // brass windage turret
+      ...trig(0.015, -0.012)
+    ]);
   }
 
   generatePreviews(weapons) {

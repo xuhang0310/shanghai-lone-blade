@@ -4,6 +4,19 @@ export class InputManager {
   constructor(canvas, touchUI, callbacks) {
     this.canvas = canvas;
     this.touchUI = touchUI;
+    this.sneakButton = document.getElementById('bSneak');
+    this.crouchButton = document.getElementById('bCrouch');
+    this.execButton = document.getElementById('bExec');
+    this.fireButton = document.getElementById('bFire');
+    this.blockButton = document.getElementById('bBlock');
+    this.healButton = document.getElementById('bNade');
+    this.lockButton = document.getElementById('bJump');
+    this.armoryButton = document.getElementById('bArmory');
+    this.ultButtons = [
+      document.getElementById('bUlt1'),
+      document.getElementById('bUlt2'),
+      document.getElementById('bUlt3')
+    ];
     this.cb = callbacks;
     this.keys = {};
     this.mouse = {
@@ -16,6 +29,7 @@ export class InputManager {
     this.isTouch = false;
     this.locked = false;
     this.touchFire = false;
+    this.touchBlock = false;
     this.sticks = { move: null, look: null };
 
     this._bind();
@@ -38,16 +52,84 @@ export class InputManager {
   _setTouch() {
     if (!this.isTouch) {
       this.isTouch = true;
+      if (document.pointerLockElement === this.canvas) this.exitPointerLock();
       this.touchUI.hidden = false;
       this.cb.onResize?.();
     }
   }
 
+  enableTouch() {
+    this._setTouch();
+  }
+
+  updateStealthControls(sneaking, crouched, canExecute) {
+    if (!this.isTouch) return;
+    if (this.sneakButton && this.sneakButton.ariaPressed !== String(sneaking)) this.sneakButton.ariaPressed = String(sneaking);
+    if (this.crouchButton && this.crouchButton.ariaPressed !== String(crouched)) this.crouchButton.ariaPressed = String(crouched);
+    if (this.execButton && this.execButton.disabled === canExecute) this.execButton.disabled = !canExecute;
+  }
+
+  updateTouchHUD({
+    coldMode = true,
+    guardCounterReady = false,
+    flasks = 0,
+    maxFlasks = 4,
+    lockedOn = false,
+    canUpgrade = false,
+    interactLabel = '绝杀',
+    canInteract = false,
+    ults = null
+  } = {}) {
+    if (!this.isTouch) return;
+    this.touchUI?.classList?.toggle('cold-mode', !!coldMode);
+    if (this.fireButton) {
+      this.fireButton.classList?.toggle('gc-ready', !!guardCounterReady);
+      const wantTxt = guardCounterReady ? '防反!' : '斩击';
+      if (this.fireButton.textContent !== wantTxt) this.fireButton.textContent = wantTxt;
+    }
+    if (this.blockButton) {
+      this.blockButton.classList?.toggle('is-holding', !!this.touchBlock);
+    }
+    if (this.healButton) {
+      this.healButton.classList?.toggle('is-empty', flasks <= 0);
+      const wantHeal = `药×${flasks}`;
+      if (this.healButton.textContent !== wantHeal) this.healButton.textContent = wantHeal;
+    }
+    if (this.lockButton && this.lockButton.ariaPressed !== String(!!lockedOn)) {
+      this.lockButton.ariaPressed = String(!!lockedOn);
+    }
+    if (this.armoryButton) {
+      this.armoryButton.classList?.toggle('can-up', !!canUpgrade);
+    }
+    if (this.execButton) {
+      this.execButton.disabled = !canInteract;
+      if (this.execButton.textContent !== interactLabel) this.execButton.textContent = interactLabel;
+    }
+    if (ults && this.ultButtons) {
+      for (let i = 0; i < 3; i++) {
+        const btn = this.ultButtons[i];
+        const u = ults[i];
+        if (!btn || !u) continue;
+        btn.classList?.toggle('is-ready', !!u.ready);
+        btn.classList?.toggle('on-cd', !!u.onCd);
+        const sub = btn.querySelector?.('small');
+        if (sub) {
+          const wantSub = u.onCd ? `${Math.ceil(u.cd)}s` : `${u.cost}气`;
+          if (sub.textContent !== wantSub) sub.textContent = wantSub;
+        }
+      }
+    }
+  }
+
   _bind() {
     window.addEventListener('keydown', e => {
+      if (e.target.closest?.('#motion-library')) return;
+      // Menu controls use the browser's native radio, slider and tab navigation.
+      if (e.target.closest?.('#ui:not([hidden]), #armory:not([hidden])') &&
+          ['Space', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) return;
       if (e.target.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
       this.keys[e.code] = true;
-      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'AltLeft', 'AltRight', 'F1', 'F2', 'F3', 'F4', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.code === 'KeyP' || (e.code === 'Escape' && !this.locked)) { this.cb.onPause?.(); return; }
       if (e.repeat) return;
       this.cb.onKeyDown?.(e.code);
@@ -55,19 +137,23 @@ export class InputManager {
 
     window.addEventListener('keyup', e => {
       this.keys[e.code] = false;
+      if (e.target.closest?.('#motion-library')) return;
       this.cb.onKeyUp?.(e.code);
     });
 
     window.addEventListener('blur', () => {
       for (const k in this.keys) this.keys[k] = false;
       this.mouse.down = this.mouse.right = false;
+      this.touchFire = false;
+      this.touchBlock = false;
       this.cb.onBlur?.();
     });
 
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === this.canvas;
-      if (was && !this.locked) this.cb.onPointerUnlock?.();
+      if (this.locked && this.isTouch) this.exitPointerLock();
+      if (was && !this.locked && !this.isTouch) this.cb.onPointerUnlock?.();
     });
 
     document.addEventListener('mousemove', e => {
@@ -150,19 +236,28 @@ export class InputManager {
     const bindTouchBtn = (id, downFn, upFn) => {
       const b = document.getElementById(id);
       if (!b) return;
+      let lastTouchTs = 0;
       b.addEventListener('touchstart', e => {
         e.preventDefault();
         e.stopPropagation();
+        if (b.disabled) return;
+        lastTouchTs = performance.now();
         this._setTouch();
         this.cb.onInteract?.();
         downFn();
       }, { passive: false });
       if (upFn) {
-        b.addEventListener('touchend', upFn);
-        b.addEventListener('touchcancel', upFn);
+        const end = () => {
+          lastTouchTs = performance.now();
+          upFn();
+        };
+        b.addEventListener('touchend', end);
+        b.addEventListener('touchcancel', end);
       }
       b.addEventListener('click', () => {
-        if (!this.isTouch) {
+        if (b.disabled) return;
+        // Prevent ghost click after real finger touch while still supporting stylus / hybrid / mouse taps
+        if (performance.now() - lastTouchTs > 450) {
           downFn();
           if (upFn) upFn();
         }
@@ -170,13 +265,19 @@ export class InputManager {
       });
     };
 
-    bindTouchBtn('bJump', () => this.cb.onKeyDown?.('Space'));
-    bindTouchBtn('bGun', () => this.cb.onKeyDown?.('KeyQ'));
+    bindTouchBtn('bJump', () => this.cb.onKeyDown?.('Tab'));
+    bindTouchBtn('bGun', () => this.cb.onKeyDown?.('Digit1'));
+    bindTouchBtn('bUlt1', () => this.cb.onKeyDown?.('Digit1'));
+    bindTouchBtn('bUlt2', () => this.cb.onKeyDown?.('Digit2'));
+    bindTouchBtn('bUlt3', () => this.cb.onKeyDown?.('Digit3'));
     bindTouchBtn('bRoll', () => this.cb.onKeyDown?.('AltLeft'));
     bindTouchBtn('bPause', () => this.cb.onPause?.());
-    bindTouchBtn('bNade', () => this.cb.onKeyDown?.('KeyG'));
+    bindTouchBtn('bNade', () => this.cb.onKeyDown?.('KeyQ'));
+    bindTouchBtn('bSneak', () => this.cb.onKeyDown?.('KeyC'));
+    bindTouchBtn('bCrouch', () => this.cb.onKeyDown?.('KeyV'));
     bindTouchBtn('bExec', () => this.cb.onKeyDown?.('KeyE'));
-    bindTouchBtn('bArmory', () => this.cb.onKeyDown?.('KeyB'));
+    bindTouchBtn('bArmory', () => this.cb.onKeyDown?.('KeyU'));
+    bindTouchBtn('bBlock', () => { this.touchBlock = true; }, () => { this.touchBlock = false; });
     bindTouchBtn('bFire', () => { this.touchFire = true; }, () => { this.touchFire = false; });
   }
 

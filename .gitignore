@@ -1,5 +1,20 @@
 node_modules/
 dist/
+tools/__pycache__/
+.ruff_cache/
 *.local
 .DS_Store
 Thumbs.db
+
+# Mixamo source downloads stay local (license: no redistribution of raw files); the converted
+# public/assets/chars/anims-mixamo.json is what ships with the game
+anim-src/**/*.fbx
+anim-src/**/*.zip
+anim-src/**/*.glb
+anim-src/**/*.gltf
+anim-src/**/*.bin
+
+# Large generated promo video renders & raw unoptimized 3D source files stay local
+promo/
+art/*.glb
+art/*.blend

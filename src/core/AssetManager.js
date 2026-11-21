@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { LEVELS } from '../config/constants.js';
+import { HERO_PRESETS, LEVELS } from '../config/constants.js';
 
 export function makeCanvasTexture(w, h, draw, rx = 0, ry = 0, srgb = true) {
   const c = document.createElement('canvas');
@@ -20,12 +20,18 @@ export class AssetManager {
     this.tex = {};
     this.glb = {};
     this.anims = null;
+    this.mixamoAnims = {};
+    this.pendingMotions = new Map();
+    this.previewMotions = new Map();
+    this.pendingHeroes = new Map();
+    this.pendingTex = new Map();
+    this._glLoader = null;
+    this._texLoader = null;
     this.manClips = {};
     this.soldierClips = {};
     this.skinImg = null;
     this.soldierImg = null;
     this.manNor = null;
-    this.manOrm = null;
     this.lampTop = new THREE.Vector3(0, 3.6, 0);
     this.crateBody = null;
     this.crateLid = null;
@@ -34,33 +40,20 @@ export class AssetManager {
     this.procTex = {};
   }
 
-  async loadAll(onProgress) {
-    const tl = new THREE.TextureLoader();
-    const gl = new GLTFLoader();
-    const jobs = [];
-    let done = 0;
+  _getTexLoader() {
+    return this._texLoader || (this._texLoader = new THREE.TextureLoader());
+  }
 
-    const track = p => {
-      jobs.push(
-        p.then(
-          val => {
-            done++;
-            onProgress?.(done / jobs.length);
-            return val;
-          },
-          err => {
-            console.error('Asset load error:', err);
-            throw err;
-          }
-        )
-      );
-    };
-
-    const texIds = [...new Set(LEVELS.flatMap(l => [l.ground, ...l.walls]))];
-    for (const id of texIds) {
-      this.tex[id] = {};
-      for (const k of ['diff', 'nor', 'rough']) {
-        track(
+  ensureTexSet(id) {
+    if (this.tex[id]?.diff && this.tex[id]?.nor && this.tex[id]?.rough) {
+      return Promise.resolve(this.tex[id]);
+    }
+    if (this.pendingTex.has(id)) return this.pendingTex.get(id);
+    const tl = this._getTexLoader();
+    this.tex[id] = this.tex[id] || {};
+    const req = Promise.all(
+      ['diff', 'nor', 'rough'].map(
+        k =>
           new Promise((resolve, reject) => {
             tl.load(
               `assets/tex/${id}_${k}.jpg`,
@@ -75,8 +68,82 @@ export class AssetManager {
               reject
             );
           })
-        );
+      )
+    )
+      .then(() => this.tex[id])
+      .finally(() => this.pendingTex.delete(id));
+    this.pendingTex.set(id, req);
+    return req;
+  }
+
+  levelTexIds(lvlIndex = 0) {
+    const cfg = LEVELS[lvlIndex] || LEVELS[0];
+    if (!cfg) return [...new Set(LEVELS.flatMap(l => [l.ground, ...l.walls]))];
+    // Sidewalks in ArchitectureBuilder always use concrete_floor_worn_001 across every chapter
+    return [...new Set(['concrete_floor_worn_001', cfg.ground, ...cfg.walls])];
+  }
+
+  ensureLevelTextures(lvlIndex = 0) {
+    return Promise.all(this.levelTexIds(lvlIndex).map(id => this.ensureTexSet(id)));
+  }
+
+  preloadRemainingLevelTextures(excludeLvlIndex = 0) {
+    const skip = new Set(this.levelTexIds(excludeLvlIndex));
+    const rest = [...new Set(LEVELS.flatMap(l => [l.ground, ...l.walls]))].filter(id => !skip.has(id));
+    // Stagger silently in background so menu / gameplay stays silky smooth
+    rest.forEach((id, i) => {
+      setTimeout(() => { this.ensureTexSet(id).catch(() => {}); }, 250 + i * 180);
+    });
+  }
+
+  async loadAll(onProgress, initialHeroId = HERO_PRESETS[0]?.id || 'ranger', initialLvlIndex = 0) {
+    const tl = this._getTexLoader();
+    const gl = (this._glLoader = new GLTFLoader());
+    const jobs = [];
+    const items = [];
+    let activePhase = '正在唤醒雨夜物理与弹道系统…';
+
+    const emit = () => {
+      let totalW = 0;
+      let doneW = 0;
+      for (const it of items) {
+        totalW += it.w;
+        doneW += it.w * it.p;
       }
+      onProgress?.(totalW > 0 ? doneW / totalW : 0, activePhase);
+    };
+
+    const addSlot = (w, phase) => {
+      const slot = { w, p: 0, phase };
+      items.push(slot);
+      return slot;
+    };
+
+    const track = (promise, w = 2, phase = '') => {
+      const slot = addSlot(w, phase);
+      jobs.push(
+        promise.then(
+          val => {
+            slot.p = 1;
+            if (phase) activePhase = phase;
+            emit();
+            return val;
+          },
+          err => {
+            console.error('Asset load error:', err);
+            throw err;
+          }
+        )
+      );
+      return slot;
+    };
+
+    // Only block startup on the initial chapter's required PBR texture sets (remaining chapters preload silently in background!)
+    const initCfg = LEVELS[initialLvlIndex] || LEVELS[0];
+    const texIds = this.levelTexIds(initialLvlIndex);
+    const stageShort = initCfg ? initCfg.name.split('· ')[1] || initCfg.name : '沪上街区';
+    for (const id of texIds) {
+      track(this.ensureTexSet(id), 4, `正在铺设${stageShort}雨夜石砖与材质…`);
     }
 
     const tc = {};
@@ -100,17 +167,18 @@ export class AssetManager {
       return tc[key];
     };
 
-    for (const [k, dir] of [
-      ['crate', 'models'],
-      ['barrel', 'models'],
-      ['lamp', 'models'],
-      ['man', 'chars'],
-      ['soldier', 'chars']
+    for (const [k, dir, phase] of [
+      ['crate', 'models', '正在布置街巷木箱与掩体道具…'],
+      ['barrel', 'models', '正在布置易燃油桶与爆破物件…'],
+      ['lamp', 'models', '正在点亮沪上复古煤气路灯…'],
+      ['man', 'chars', '正在整备黑龙帮敌寇人物骨骼…'],
+      ['soldier', 'chars', '正在整备敌军重装守卫模型…']
     ]) {
-      track(
+      const slot = addSlot(5, phase);
+      jobs.push(
         new Promise((resolve, reject) => {
           gl.load(
-            `assets/${dir}/${k}.json`,
+            `assets/${dir}/${k}.glb`,
             g => {
               this.glb[k] = g.scene;
               const wait = [];
@@ -126,62 +194,132 @@ export class AssetManager {
                   m.roughness = 0.08;
                   m.metalness = 0.15;
                   m.depthWrite = false;
-                } else if (t.diff) {
-                  wait.push(loadModelTex(dir, t.diff, true).then(x => { m.map = x; m.needsUpdate = true; }));
+                } else {
+                  // Closed solid props: skip back faces (halves raster work in every scene/shadow pass)
+                  m.side = THREE.FrontSide;
+                  if (t.diff) wait.push(loadModelTex(dir, t.diff, true).then(x => { m.map = x; m.needsUpdate = true; }));
                 }
                 if (t.nor) {
                   wait.push(loadModelTex(dir, t.nor, false).then(x => { m.normalMap = x; m.needsUpdate = true; }));
                 }
                 if (t.orm) {
                   wait.push(loadModelTex(dir, t.orm, false).then(x => {
+                    m.aoMap = x;
                     m.roughnessMap = x;
                     m.metalnessMap = x;
                     m.needsUpdate = true;
                   }));
                 }
               });
-              Promise.all(wait).then(resolve, reject);
+              Promise.all(wait).then(() => {
+                slot.p = 1;
+                activePhase = phase;
+                emit();
+                resolve();
+              }, reject);
             },
-            undefined,
+            xhr => {
+              if (xhr && xhr.total > 0) {
+                slot.p = Math.min(0.85, (xhr.loaded / xhr.total) * 0.85);
+                activePhase = phase;
+                emit();
+              }
+            },
             reject
           );
         })
       );
     }
 
-    track(fetch('assets/chars/anims.json').then(r => r.json()).then(j => { this.anims = j; }));
+    // Use the same model for a saved selection and a later switch in the menu, with real byte-streaming progress!
+    const initPreset = HERO_PRESETS.find(p => p.id === initialHeroId) || HERO_PRESETS[0];
+    if (initPreset) {
+      const heroPhase = `正在整备${initPreset.name}角色模型与二十九军式大刀…`;
+      const heroSlot = addSlot(48, heroPhase);
+      jobs.push(
+        this.ensureHeroPreset(initPreset.id, xhr => {
+          if (xhr && xhr.total > 0) {
+            heroSlot.p = Math.min(0.98, xhr.loaded / xhr.total);
+            activePhase = heroPhase;
+            emit();
+          }
+        }).then(res => {
+          heroSlot.p = 1;
+          activePhase = heroPhase;
+          emit();
+          return res;
+        })
+      );
+    }
+    track(fetch('assets/chars/anims.json').then(r => r.json()).then(j => { this.anims = j; }), 4, '正在同步基础战斗动作骨架…');
+    // Optional Mixamo clips (tools/convert-mixamo.mjs); the game falls back to procedural motion without them
+    track(
+      fetch('assets/chars/anims-mixamo.json')
+        .then(r => (r.ok ? r.json() : {}))
+        .catch(() => ({}))
+        .then(j => { this.mixamoAnims = j && typeof j === 'object' ? j : {}; }),
+      10,
+      '正在接入 65 骨骼实战与潜行动作库…'
+    );
     track(new Promise((resolve, reject) => {
       const im = new Image();
       im.onload = () => { this.skinImg = im; resolve(); };
       im.onerror = reject;
       im.src = 'assets/chars/man_diff.png';
-    }));
+    }), 3, '正在渲染人物肌理与衣料纹理…');
     track(new Promise((resolve, reject) => {
       const im = new Image();
       im.onload = () => { this.soldierImg = im; resolve(); };
       im.onerror = reject;
       im.src = 'assets/chars/soldier.png';
-    }));
-    track(loadModelTex('chars', 'man_nor.jpg', false).then(t => { this.manNor = t; }));
-    track(loadModelTex('chars', 'man_orm.jpg', false).then(t => { this.manOrm = t; }));
+    }), 2, '正在渲染敌军制服与装备纹理…');
+    track(loadModelTex('chars', 'man_nor.jpg', false).then(t => { this.manNor = t; }), 2, '正在烘焙雨夜法线高光…');
 
+    emit();
     await Promise.all(jobs);
+    activePhase = '正在烘焙雨夜光影与军械预览…';
+    onProgress?.(0.98, activePhase);
     this._prepAssets();
     this._buildProceduralTextures();
+    onProgress?.(1, '电台密电接通，准备踏入雨夜');
+  }
+
+  _prepGlb(k) {
+    const root = this.glb[k];
+    if (!root || root.userData._prepped) return;
+    root.userData._prepped = true;
+    root.updateMatrixWorld(true);
+    root.traverse(o => {
+      if (o.isMesh) {
+        o.geometry.userData.shared = true;
+        o.castShadow = true;
+        o.receiveShadow = k !== 'man' && k !== 'soldier';
+      }
+      if (o.isBone) o.name = o.name.replace(/^mixamorig:?/, '');
+    });
+  }
+
+  async ensureHeroPreset(id, onProgress = null) {
+    const key = `hero-${id}`;
+    if (this.glb[key]) return this.glb[key];
+    if (!this.pendingHeroes.has(key)) {
+      const gl = this._glLoader || (this._glLoader = new GLTFLoader());
+      const model = HERO_PRESETS.find(preset => preset.id === id)?.model || key;
+      const req = gl.loadAsync(`assets/chars/${model}.glb`, onProgress || undefined).then(gltf => {
+        this.glb[key] = gltf.scene;
+        this._prepGlb(key);
+        return gltf.scene;
+      }).catch(err => {
+        console.warn(`角色模型 ${key} 按需加载失败。`, err);
+        return null;
+      }).finally(() => this.pendingHeroes.delete(key));
+      this.pendingHeroes.set(key, req);
+    }
+    return this.pendingHeroes.get(key);
   }
 
   _prepAssets() {
-    for (const k in this.glb) {
-      this.glb[k].updateMatrixWorld(true);
-      this.glb[k].traverse(o => {
-        if (o.isMesh) {
-          o.geometry.userData.shared = true;
-          o.castShadow = true;
-          o.receiveShadow = k !== 'man' && k !== 'soldier';
-        }
-        if (o.isBone) o.name = o.name.replace(/^mixamorig:?/, '');
-      });
-    }
+    for (const k in this.glb) this._prepGlb(k);
 
     // Lamp bulb glow & center
     const bb = new THREE.Box3();
@@ -237,11 +375,65 @@ export class AssetManager {
       this.soldierClips[cn] = new THREE.AnimationClip(cn, c.dur, solTracks);
     }
 
+    for (const key in this.mixamoAnims) {
+      const c = this.mixamoAnims[key];
+      if (!c?.man || !c?.soldier) continue;
+      const clips = this._motionClips(key, c);
+      this.manClips[key] = clips.man;
+      this.soldierClips[key] = clips.soldier;
+      delete c.man;
+      delete c.soldier;
+    }
+
     this.manClips.RelaxIdle = this._buildRelaxIdleClip(this.glb.man);
     this.soldierClips.RelaxIdle = this._buildRelaxIdleClip(this.glb.soldier);
 
     this.manMetrics = this._measureRig(this.glb.man, this.manClips.Idle);
     this.soldierMetrics = this._measureRig(this.glb.soldier, this.soldierClips.Idle);
+  }
+
+  _motionClips(key, tracks) {
+    const { n, family, stance } = this.mixamoAnims[key];
+    const man = this._clipFromTracks(key, n, tracks.man);
+    const soldier = this._clipFromTracks(key, n, tracks.soldier);
+    man.userData.family = soldier.userData.family = family || key;
+    man.userData.stance = soldier.userData.stance = stance;
+    return { man, soldier };
+  }
+
+  async loadMotion(key) {
+    if (this.manClips[key]) return { man: this.manClips[key], soldier: this.soldierClips[key] };
+    const cached = this.previewMotions.get(key);
+    if (cached) {
+      this.previewMotions.delete(key);
+      this.previewMotions.set(key, cached);
+      return cached;
+    }
+    const item = this.mixamoAnims[key];
+    if (!item?.file) throw new Error('找不到动作文件');
+    if (!this.pendingMotions.has(key)) {
+      const request = fetch('assets/chars/' + item.file).then(r => {
+        if (!r.ok) throw new Error('动作文件加载失败');
+        return r.json();
+      }).then(tracks => {
+        const clips = this._motionClips(key, tracks);
+        this.previewMotions.set(key, clips);
+        if (this.previewMotions.size > 8) this.previewMotions.delete(this.previewMotions.keys().next().value);
+        return clips;
+      }).finally(() => this.pendingMotions.delete(key));
+      this.pendingMotions.set(key, request);
+    }
+    return this.pendingMotions.get(key);
+  }
+
+  _clipFromTracks(name, n, { hips, q, turnYaw }) {
+    const times = new Float32Array(n);
+    for (let i = 0; i < n; i++) times[i] = i / 30;
+    const tracks = [new THREE.VectorKeyframeTrack('Hips.position', times, hips)];
+    for (const b in q) tracks.push(new THREE.QuaternionKeyframeTrack(`${b}.quaternion`, times, q[b]));
+    const clip = new THREE.AnimationClip(name, (n - 1) / 30, tracks);
+    clip.userData = { turnYaw };
+    return clip;
   }
 
   _buildRelaxIdleClip(rigRoot) {
@@ -489,11 +681,11 @@ export class AssetManager {
   }
 
   pbr(id, extra = {}) {
-    const t = this.tex[id];
+    const t = this.tex[id] || Object.values(this.tex).find(x => x?.diff) || {};
     return new THREE.MeshStandardMaterial({
-      map: t.diff,
-      normalMap: t.nor,
-      roughnessMap: t.rough,
+      map: t.diff || null,
+      normalMap: t.nor || null,
+      roughnessMap: t.rough || null,
       roughness: 1,
       ...extra
     });

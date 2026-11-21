@@ -9,6 +9,8 @@ import {
   GROUP_PROJECTILE,
   GROUP_HANGING,
   PLAYER_RADIUS,
+  PLAYER_CONTACT_OFFSET,
+  PLAYER_HEIGHT,
   makeCollisionGroups
 } from '../config/constants.js';
 
@@ -33,7 +35,9 @@ export class PhysicsWorld {
     this.pendingRemoveJoints = [];
     this.playerBody = null;
     this.playerCollider = null;
-    this.playerHalfHeight = 0.46;
+    this.playerHalfHeight = PLAYER_HEIGHT * 0.5 - PLAYER_RADIUS;
+    this.playerHeight = PLAYER_HEIGHT;
+    this.headroomProbe = new RAPIER.Ball(PLAYER_RADIUS - 0.01);
     this.lastGrounded = true;
     this.onProjectileContact = null;
   }
@@ -66,7 +70,7 @@ export class PhysicsWorld {
 
     this.world = new RAPIER.World({ x: 0, y: -19.0, z: 0 });
     this.eventQueue = new RAPIER.EventQueue(true);
-    this.charController = this.world.createCharacterController(0.03);
+    this.charController = this.world.createCharacterController(PLAYER_CONTACT_OFFSET);
     this.charController.enableAutostep(0.35, 0.22, true);
     this.charController.enableSnapToGround(0.22);
     this.charController.setApplyImpulsesToDynamicBodies(true);
@@ -134,6 +138,7 @@ export class PhysicsWorld {
 
   createPlayer(x, y, z) {
     const halfH = this.playerHalfHeight;
+    this.playerHeight = PLAYER_HEIGHT;
     const centerY = y + halfH + PLAYER_RADIUS;
     const rb = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, centerY, z)
@@ -156,7 +161,25 @@ export class PhysicsWorld {
     this.playerBody.setTranslation({ x, y: centerY, z }, true);
   }
 
-  movePlayer(desiredDx, desiredDy, desiredDz) {
+  canSetPlayerHeight(height) {
+    if (!this.playerCollider || height <= this.playerHeight) return true;
+    const { x, y, z } = this.playerBody.translation();
+    const top = { x, y: y - PLAYER_HEIGHT * 0.5 + height - PLAYER_RADIUS, z };
+    return !this.world.intersectionWithShape(top, { x: 0, y: 0, z: 0, w: 1 }, this.headroomProbe,
+      undefined, makeCollisionGroups(GROUP_PLAYER, GROUP_WORLD | GROUP_PROP | GROUP_ENEMY), this.playerCollider, this.playerBody);
+  }
+
+  setPlayerHeight(height) {
+    if (!this.playerCollider || Math.abs(height - this.playerHeight) < 0.002) return true;
+    if (!this.canSetPlayerHeight(height)) return false;
+    this.playerCollider.setHalfHeight(height * 0.5 - PLAYER_RADIUS);
+    // The body retains its ground reference while the collider changes at the top.
+    this.playerCollider.setTranslationWrtParent({ x: 0, y: (height - PLAYER_HEIGHT) * 0.5, z: 0 });
+    this.playerHeight = height;
+    return true;
+  }
+
+  movePlayer(desiredDx, desiredDy, desiredDz, collideWithActors = false) {
     if (!this.playerBody || !this.playerCollider) {
       return { x: 0, y: 0, z: 0, grounded: true };
     }
@@ -164,7 +187,7 @@ export class PhysicsWorld {
       this.playerCollider,
       { x: desiredDx, y: desiredDy, z: desiredDz },
       undefined,
-      makeCollisionGroups(GROUP_PLAYER, GROUP_WORLD | GROUP_PROP)
+      makeCollisionGroups(GROUP_PLAYER, GROUP_WORLD | GROUP_PROP | (collideWithActors ? GROUP_ENEMY : 0))
     );
     const move = this.charController.computedMovement();
     const grounded = this.charController.computedGrounded();
@@ -189,18 +212,43 @@ export class PhysicsWorld {
     );
     const col = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(halfH, radius)
-        .setCollisionGroups(makeCollisionGroups(GROUP_ENEMY, GROUP_WORLD | GROUP_PROP | GROUP_PROJECTILE)),
+        .setCollisionGroups(makeCollisionGroups(GROUP_ENEMY, GROUP_WORLD | GROUP_PROP | GROUP_PLAYER | GROUP_PROJECTILE)),
       rb
     );
     this.colliderMap.set(col.handle, { kind: 'enemy', enemy });
     this.bodyMap.set(rb.handle, rb);
-    return { rb, col, radius, halfH };
+    return { rb, col, radius };
   }
 
   updateEnemyCollider(e, x, z, height) {
     if (!e.phys) return;
-    const cy = Math.max(e.phys.radius + 0.05, height * 0.5);
-    e.phys.rb.setNextKinematicTranslation({ x, y: cy, z });
+    const ph = e.phys;
+    if (e.downed) {
+      // Wounded enemy lying on the ground: slim capsule laid along the body, so shots that pass
+      // over a crawling man miss instead of hitting an invisible standing pill
+      const k = (e.ht || 1.8) / 1.8;
+      if (!ph.prone) {
+        ph.prone = true;
+        ph.col.setRadius(0.24 * k);
+        ph.col.setHalfHeight(0.62 * k);
+      }
+      _q.setFromAxisAngle(_yAxis, -e.ang).multiply(_q2.setFromAxisAngle(_zAxis, Math.PI / 2));
+      ph.rb.setNextKinematicRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w });
+      ph.rb.setNextKinematicTranslation({ x: x + Math.cos(e.ang) * 0.12, y: 0.24 * k, z: z + Math.sin(e.ang) * 0.12 });
+      return;
+    }
+    if (ph.prone) {
+      ph.prone = false;
+      ph.stanceHeight = null;
+      ph.rb.setNextKinematicRotation({ x: 0, y: 0, z: 0, w: 1 });
+    }
+    if (ph.stanceHeight == null || Math.abs(height - ph.stanceHeight) > 0.008) {
+      const radius = Math.min(ph.radius, height * 0.46);
+      ph.col.setRadius(radius);
+      ph.col.setHalfHeight(height * 0.5 - radius);
+      ph.stanceHeight = height;
+    }
+    ph.rb.setNextKinematicTranslation({ x, y: ph.stanceHeight * 0.5, z });
   }
 
   queueRemoveBody(rb) {
@@ -330,7 +378,7 @@ export class PhysicsWorld {
     return entry;
   }
 
-  spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.2) {
+  spawnCorpseBody(mesh, x, z, initialYaw, dirSign, pushX, pushZ, scale = 1, slideImpulse = 4.2, { fallDur = 0.46, instant = false, upright = false } = {}) {
     const radius = 0.24 * scale;
     const ankleH = 0.15 * scale;
     const pLen = Math.hypot(pushX, pushZ);
@@ -379,8 +427,9 @@ export class PhysicsWorld {
       maxLife: 24,
       fade: true,
       corpseFall: {
-        t: 0,
-        dur: 0.46,
+        t: instant ? fallDur : 0,
+        dur: fallDur,
+        upright, // the mesh's own death clip does the falling
         initialYaw,
         axis: new THREE.Vector3(tz, 0, -tx).normalize(),
         ankleH,
@@ -495,7 +544,7 @@ export class PhysicsWorld {
             ? (u / 0.78) * (u / 0.78) * 0.94
             : 0.94 + 0.06 * Math.sin(((u - 0.78) / 0.22) * (Math.PI * 0.5));
         _q.setFromAxisAngle(_yAxis, cf.initialYaw);
-        _q2.setFromAxisAngle(cf.axis, ease * 1.527);
+        _q2.setFromAxisAngle(cf.axis, cf.upright ? 0 : ease * 1.527);
         l.mesh.quaternion.multiplyQuaternions(_q2, _q);
 
         const cr = l.mesh?.userData?.corpseRelax;

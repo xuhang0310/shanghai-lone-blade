@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { LAYER_NO_REFLECT } from '../config/constants.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -21,9 +22,15 @@ export function createVolumetricConeMaterial(color = 0xffb468, intensity = 0.12)
       varying vec3 vViewPos;
       void main() {
         vUv = uv;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vec4 localPos = vec4(position, 1.0);
+        vec3 localNormal = normal;
+        #ifdef USE_INSTANCING
+          localPos = instanceMatrix * localPos;
+          localNormal = mat3(instanceMatrix) * localNormal;
+        #endif
+        vec4 mvPosition = modelViewMatrix * localPos;
         vViewPos = -mvPosition.xyz;
-        vNormalV = normalize(normalMatrix * normal);
+        vNormalV = normalize(normalMatrix * localNormal);
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
@@ -47,6 +54,91 @@ export function createVolumetricConeMaterial(color = 0xffb468, intensity = 0.12)
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide
   });
+}
+
+// Display-space film grade (runs after tone mapping): teal shadows / tungsten-amber highlights for the
+// Shanghai night, reds kept punchy, grain and vignette. Also carries the Dead Eye sepia wash, the kill-cam
+// bleach and the cinematic letterbox, driven by the uniforms exposed as GameRenderer.grade.
+export function createFilmGradeShader(timeUniform, aspect) {
+  return {
+    uniforms: {
+      tDiffuse: { value: null },
+      uTime: timeUniform,
+      uAspect: { value: aspect },
+      uDeadEye: { value: 0 },
+      uKillCam: { value: 0 },
+      uLetterbox: { value: 0 },
+      uGrain: { value: 0.035 },
+      uVignette: { value: 0.32 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float uTime;
+      uniform float uAspect;
+      uniform float uDeadEye;
+      uniform float uKillCam;
+      uniform float uLetterbox;
+      uniform float uGrain;
+      uniform float uVignette;
+      varying vec2 vUv;
+
+      float hash12(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      void main() {
+        vec2 q = (vUv - 0.5) * vec2(uAspect, 1.0);
+        float r = length(q);
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+
+        // Dead Eye: edges smear toward the centre (tunnel focus)
+        if (uDeadEye > 0.001) {
+          float edge = smoothstep(0.32, 0.9, r) * uDeadEye;
+          vec2 dir = (vec2(0.5) - vUv) * 0.035 * edge;
+          c = (c + texture2D(tDiffuse, vUv + dir).rgb + texture2D(tDiffuse, vUv + dir * 2.0).rgb) / 3.0;
+        }
+
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        // Split-tone: cool teal shadows, warm tungsten highlights
+        vec3 tint = mix(vec3(0.93, 1.0, 1.07), vec3(1.06, 1.0, 0.9), smoothstep(0.12, 0.7, l));
+        c *= tint;
+        // Gentle S-curve
+        c = clamp(c, 0.0, 1.0);
+        c = mix(c, c * c * (3.0 - 2.0 * c), 0.22);
+        // Noir saturation: everything a touch muted except reds (blood, lanterns, neon)
+        l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float redness = clamp((c.r - max(c.g, c.b)) * 3.2, 0.0, 1.0);
+        c = mix(vec3(l), c, mix(0.84, 1.1, redness));
+
+        // Dead Eye: sepia-amber wash that leaves reds burning through
+        vec3 sepia = vec3(l * 1.14 + 0.03, l * 0.9 + 0.012, l * 0.6);
+        c = mix(c, sepia, uDeadEye * 0.8 * (1.0 - redness * 0.65));
+        // Kill cam: bleached, contrasty frame, reds kept
+        vec3 bleach = vec3(l) * vec3(1.04, 1.0, 0.96);
+        bleach = mix(bleach, bleach * bleach * 1.6, 0.35);
+        c = mix(c, bleach, uKillCam * 0.6 * (1.0 - redness * 0.8));
+
+        float vig = smoothstep(1.0, 0.28, r);
+        c *= mix(1.0, vig, clamp(uVignette + uDeadEye * 0.38 + uKillCam * 0.3, 0.0, 1.0));
+
+        float n = hash12(vUv * vec2(1920.0, 1080.0) + fract(uTime * 7.31) * 517.0) - 0.5;
+        c += n * (uGrain + uDeadEye * 0.03 + uKillCam * 0.025) * (1.0 - l * 0.6);
+
+        float bar = uLetterbox * 0.115;
+        if (vUv.y < bar || vUv.y > 1.0 - bar) c = vec3(0.0);
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `
+  };
 }
 
 export function createWetGroundMaterial(assets, groundId, gameRenderer, wetness = 1.0) {
@@ -250,11 +342,16 @@ export class GameRenderer {
     this.bloomEnabled = true;
     this.baseFov = 62;
 
+    // No MSAA on the canvas: every mode renders through the composer, whose SMAA pass does the AA
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: false,
       powerPreference: 'high-performance'
     });
+    this.resScale = 1;
+    this._ftAvg = 0;
+    this._drsT = 0;
+    this._size = null;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -263,10 +360,11 @@ export class GameRenderer {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 720);
+    this.camera.layers.enable(LAYER_NO_REFLECT);
 
     // Planar reflection target for puddles & river
     this.reflectRT = new THREE.WebGLRenderTarget(512, 512, { type: THREE.HalfFloatType });
-    this.reflectCam = new THREE.PerspectiveCamera(62, 1, 0.1, 320);
+    this.reflectCam = new THREE.PerspectiveCamera(62, 1, 0.1, 140);
     this.reflectMatrix = new THREE.Matrix4();
     this.reflectTexUniform = { value: this.reflectRT.texture };
     this.reflectMatUniform = { value: this.reflectMatrix };
@@ -296,6 +394,8 @@ export class GameRenderer {
     sc.far = 160;
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.radius = 2.4; // overcast moonlight: soft-edged shadows (hat brims, eaves)
+    this.sun.shadow.intensity = 0.85;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
@@ -319,6 +419,9 @@ export class GameRenderer {
     this.heroSpot.shadow.camera.far = 24;
     this.heroSpot.shadow.bias = -0.0008;
     this.heroSpot.shadow.normalBias = 0.03;
+    // Lamp shadows read as hard ink masks across faces under hat brims: soften and lift them a little
+    this.heroSpot.shadow.radius = 3;
+    this.heroSpot.shadow.intensity = 0.72;
     this.scene.add(this.heroSpot, this.heroSpot.target);
 
     this._initEnvironment();
@@ -457,7 +560,39 @@ export class GameRenderer {
     );
     this.aimLine.frustumCulled = false;
     this.aimLine.visible = false;
+    this.aimLine.layers.set(LAYER_NO_REFLECT);
     this.scene.add(this.aimLine);
+
+    // 3D Parabolic throwable trajectory preview line + landing blast-radius ring
+    const ARC_PTS = 30;
+    const arcGeo = new THREE.BufferGeometry();
+    arcGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ARC_PTS * 3), 3));
+    this.throwArc = new THREE.Line(
+      arcGeo,
+      new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.82, depthWrite: false, toneMapped: false })
+    );
+    this.throwArc.frustumCulled = false;
+    this.throwArc.visible = false;
+    this.throwArc.layers.set(LAYER_NO_REFLECT);
+    this.scene.add(this.throwArc);
+
+    const ringGeo = new THREE.RingGeometry(0.84, 1.0, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    this.throwRing = new THREE.Mesh(
+      ringGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0xffd27a,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false
+      })
+    );
+    this.throwRing.visible = false;
+    this.throwRing.layers.set(LAYER_NO_REFLECT);
+    this.scene.add(this.throwRing);
 
     const RN = 1600;
     this.rainPos = new Float32Array(RN * 6);
@@ -548,11 +683,15 @@ export class GameRenderer {
       scale: 1.0,
       distanceFallOff: 1.0
     });
-    // Exclude Sprites, Lines, Points, and transparent volumetric cones from GTAO G-Buffer
+    // Exclude Sprites, Lines, Points, and transparent volumetric cones from GTAO G-Buffer.
+    // Walk iteratively and prune Bone / SkinnedMesh / opaque InstancedMesh subtrees to cut per-frame CPU overhead.
     this.gtaoPass._overrideVisibility = () => {
       const cache = this.gtaoPass._visibilityCache;
-      this.scene.traverse(obj => {
-        if (!obj.visible) return;
+      const stack = [this.scene];
+      while (stack.length) {
+        const obj = stack.pop();
+        if (!obj.visible) continue;
+        if (obj.isBone && (!obj.children.length || (obj.name.includes('Hand') && obj.name !== 'RightHand' && obj.name !== 'LeftHand'))) continue;
         const hide =
           obj.isPoints ||
           obj.isLine ||
@@ -562,8 +701,12 @@ export class GameRenderer {
         if (hide) {
           obj.visible = false;
           cache.push(obj);
+          continue;
         }
-      });
+        if (obj.isSkinnedMesh || obj.isInstancedMesh) continue;
+        const ch = obj.children;
+        for (let i = ch.length - 1; i >= 0; i--) stack.push(ch[i]);
+      }
     };
 
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.24, 0.32, 1.12);
@@ -625,6 +768,8 @@ export class GameRenderer {
     });
     this.smaaPass = new SMAAPass();
     this.outputPass = new OutputPass();
+    this.gradePass = new ShaderPass(createFilmGradeShader(this.timeUniform, w / h));
+    this.grade = this.gradePass.uniforms;
 
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.gtaoPass);
@@ -632,9 +777,12 @@ export class GameRenderer {
     this.composer.addPass(this.rainLensPass);
     this.composer.addPass(this.smaaPass);
     this.composer.addPass(this.outputPass);
+    this.composer.addPass(this.gradePass);
   }
 
-  resize(w, h, dpr) {
+  resize(w, h, baseDpr) {
+    this._size = { w, h, baseDpr };
+    const dpr = baseDpr * this.resScale;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(dpr);
@@ -645,6 +793,7 @@ export class GameRenderer {
     );
     this.bloomPass.resolution.set(w, h);
     this.rainLensPass.uniforms.uAspect.value = w / h;
+    this.grade.uAspect.value = w / h;
     this.camera.aspect = w / h;
     this.baseFov = this.camera.fov = w < h ? 74 : 62;
     this.camera.updateProjectionMatrix();
@@ -656,8 +805,25 @@ export class GameRenderer {
     this.rainLensPass.enabled = this.qualityMode === 2;
     this.reflectStrengthUniform.value = this.qualityMode === 2 ? 0.42 : 0;
     this.bloomEnabled = this.qualityMode >= 1;
-    this.smaaPass.enabled = this.qualityMode >= 1;
+    this.bloomPass.enabled = this.bloomEnabled;
     return this.qualityMode;
+  }
+
+  // Dynamic resolution: sheds render pixels when the frame rate sags below ~50 fps and claws them
+  // back once frames are steady again. Steps are coarse and rate-limited to avoid RT churn.
+  updateDynamicResolution(dt) {
+    if (!this._size || !(dt > 0)) return;
+    this._ftAvg = this._ftAvg ? this._ftAvg * 0.94 + dt * 0.06 : dt;
+    this._drsT += dt;
+    if (this._drsT < 1.25) return;
+    this._drsT = 0;
+    let s = this.resScale;
+    if (this._ftAvg > 1 / 50) s = Math.max(0.55, s - 0.1);
+    else if (this._ftAvg < 1 / 57.5) s = Math.min(1, s + 0.05);
+    if (Math.abs(s - this.resScale) < 1e-3) return;
+    this.resScale = s;
+    const { w, h, baseDpr } = this._size;
+    this.resize(w, h, baseDpr);
   }
 
   getQualityLabel() {
@@ -675,7 +841,7 @@ export class GameRenderer {
     rCam.fov = cam.fov;
     rCam.aspect = cam.aspect;
     rCam.near = cam.near;
-    rCam.far = 320;
+    rCam.far = 140; // FogExp2 (~0.008) leaves little past this; culls distant chunks from the extra pass
     rCam.updateProjectionMatrix();
 
     cam.getWorldDirection(this._camFwd);
@@ -702,32 +868,28 @@ export class GameRenderer {
       hidden.push(this.rain);
     }
 
-    const prevShadow = this.renderer.shadowMap.autoUpdate;
     const prevTarget = this.renderer.getRenderTarget();
-    if (this.sun.shadow.map && (!this.heroSpot.castShadow || this.heroSpot.shadow.map)) {
-      this.renderer.shadowMap.autoUpdate = false;
-    }
     this.renderer.state.buffers.depth.setTest(true);
     this.renderer.state.buffers.depth.setMask(true);
     this.renderer.setRenderTarget(this.reflectRT);
     this.renderer.clear();
     this.renderer.render(this.scene, rCam);
     this.renderer.setRenderTarget(prevTarget);
-    this.renderer.shadowMap.autoUpdate = prevShadow;
 
     for (const o of hidden) o.visible = true;
   }
 
   render() {
-    if (this.qualityMode >= 1) {
-      this._renderReflection();
-      this.renderer.state.buffers.depth.setTest(true);
-      this.renderer.state.buffers.depth.setMask(true);
-      this.composer.render();
-    } else {
-      this.renderer.state.buffers.depth.setTest(true);
-      this.renderer.state.buffers.depth.setMask(true);
-      this.renderer.render(this.scene, this.camera);
-    }
+    // Shadow maps are view-independent: render them once per frame in the main scene pass instead of
+    // again for every pass that draws the scene (GTAO normals re-render it). The reflection reuses the
+    // previous frame's maps, and its camera skips LAYER_NO_REFLECT props that must still cast shadows.
+    const sm = this.renderer.shadowMap;
+    sm.autoUpdate = false;
+    sm.needsUpdate = false;
+    this._renderReflection();
+    sm.needsUpdate = true;
+    this.renderer.state.buffers.depth.setTest(true);
+    this.renderer.state.buffers.depth.setMask(true);
+    this.composer.render();
   }
 }

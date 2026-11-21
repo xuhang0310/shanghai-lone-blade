@@ -1,0 +1,14 @@
+# Normalize line endings: keep LF in repo and working tree on every OS
+* text=auto eol=lf
+
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.glb binary
+*.blend binary
+*.ktx2 binary
+*.wasm binary

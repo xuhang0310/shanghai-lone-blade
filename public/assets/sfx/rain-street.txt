@@ -1,0 +1,11 @@
+《沪上孤枪》街巷雨声
+
+录音为 BonnyOrbit 于夜间从临街窗户采集的立体声小雨。
+原作《Light rain on street.wav》
+https://freesound.org/people/BonnyOrbit/sounds/380651/
+
+授权为 CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+游戏版使用实录的第 6 至 44 秒，减弱低频轰鸣与高频嘶声，
+调整声像宽度，并将首尾交叉淡化为 36 秒的立体声循环。
